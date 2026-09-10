@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B08135A4-2A5E-4E05-AA65-230122F986F1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoqNet.Native", "src\MoqNet.Native\MoqNet.Native.csproj", "{86617EE9-6D69-4923-90DC-B982D5ED0480}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoqNet.Client", "src\MoqNet.Client\MoqNet.Client.csproj", "{2EE100D1-3E36-471C-ACE4-02E3A6123AA0}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{DFA47D63-00FC-4D4F-A119-1A10B9B3CB07}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoqNet.Native.Tests", "tests\MoqNet.Native.Tests\MoqNet.Native.Tests.csproj", "{DF8AC89A-076D-443C-9671-C901BB0551A3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MoqNet.Client.Tests", "tests\MoqNet.Client.Tests\MoqNet.Client.Tests.csproj", "{DA408739-8143-4B54-B165-3B4423813F57}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{86617EE9-6D69-4923-90DC-B982D5ED0480}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86617EE9-6D69-4923-90DC-B982D5ED0480}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86617EE9-6D69-4923-90DC-B982D5ED0480}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86617EE9-6D69-4923-90DC-B982D5ED0480}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2EE100D1-3E36-471C-ACE4-02E3A6123AA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2EE100D1-3E36-471C-ACE4-02E3A6123AA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2EE100D1-3E36-471C-ACE4-02E3A6123AA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2EE100D1-3E36-471C-ACE4-02E3A6123AA0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF8AC89A-076D-443C-9671-C901BB0551A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF8AC89A-076D-443C-9671-C901BB0551A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF8AC89A-076D-443C-9671-C901BB0551A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF8AC89A-076D-443C-9671-C901BB0551A3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA408739-8143-4B54-B165-3B4423813F57}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA408739-8143-4B54-B165-3B4423813F57}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA408739-8143-4B54-B165-3B4423813F57}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA408739-8143-4B54-B165-3B4423813F57}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{86617EE9-6D69-4923-90DC-B982D5ED0480} = {B08135A4-2A5E-4E05-AA65-230122F986F1}
+		{2EE100D1-3E36-471C-ACE4-02E3A6123AA0} = {B08135A4-2A5E-4E05-AA65-230122F986F1}
+		{DF8AC89A-076D-443C-9671-C901BB0551A3} = {DFA47D63-00FC-4D4F-A119-1A10B9B3CB07}
+		{DA408739-8143-4B54-B165-3B4423813F57} = {DFA47D63-00FC-4D4F-A119-1A10B9B3CB07}
+	EndGlobalSection
+EndGlobal
