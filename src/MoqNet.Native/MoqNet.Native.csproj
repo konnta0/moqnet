@@ -1,0 +1,110 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>MoqNet.Native</PackageId>
+    <RootNamespace>MoqNet.Native</RootNamespace>
+    <AssemblyName>MoqNet.Native</AssemblyName>
+    <Description>MIT-licensed MoQ .NET/Unity FFI bindings with embedded native runtime. Bundles moq native binaries licensed under MIT OR Apache-2.0.</Description>
+    <PackageTags>moq;quic;webtransport;media;ffi;unity</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <ContentTargetFolders>contentFiles</ContentTargetFolders>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\licenses\moq-APACHE-2.0.txt" Pack="true" PackagePath="licenses\" Link="licenses\moq-APACHE-2.0.txt" />
+    <None Include="..\..\licenses\moq-MIT.txt" Pack="true" PackagePath="licenses\" Link="licenses\moq-MIT.txt" />
+    <None Include="..\..\licenses\moq-NOTICE.md" Pack="true" PackagePath="licenses\" Link="licenses\moq-NOTICE.md" />
+    <None Include="build\MoqNet.Native.targets" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="runtimes/win-x64/native/*.*" Condition="Exists('runtimes/win-x64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes/win-arm64/native/*.*" Condition="Exists('runtimes/win-arm64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-arm64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes/linux-x64/native/*.*" Condition="Exists('runtimes/linux-x64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-x64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes/linux-arm64/native/*.*" Condition="Exists('runtimes/linux-arm64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/linux-arm64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes/osx-x64/native/*.*" Condition="Exists('runtimes/osx-x64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/osx-x64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtimes/osx-arm64/native/*.*" Condition="Exists('runtimes/osx-arm64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/osx-arm64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- Local development: copy the host native library next to the managed assembly. -->
+  <ItemGroup>
+    <None Include="..\..\native\moqnet-ffi\target\debug\libmoqnet_ffi.so" Condition="Exists('..\..\native\moqnet-ffi\target\debug\libmoqnet_ffi.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libmoqnet_ffi.so</Link>
+      <Visible>false</Visible>
+    </None>
+    <None Include="..\..\native\moqnet-ffi\target\release\libmoqnet_ffi.so" Condition="Exists('..\..\native\moqnet-ffi\target\release\libmoqnet_ffi.so')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libmoqnet_ffi.so</Link>
+      <Visible>false</Visible>
+    </None>
+    <None Include="..\..\native\moqnet-ffi\target\debug\libmoqnet_ffi.dylib" Condition="Exists('..\..\native\moqnet-ffi\target\debug\libmoqnet_ffi.dylib')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libmoqnet_ffi.dylib</Link>
+      <Visible>false</Visible>
+    </None>
+    <None Include="..\..\native\moqnet-ffi\target\debug\moqnet_ffi.dll" Condition="Exists('..\..\native\moqnet-ffi\target\debug\moqnet_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>moqnet_ffi.dll</Link>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
+  <Target Name="SyncToUnityPackage" AfterTargets="Build" Condition="'$(CI)' != 'true'">
+    <PropertyGroup>
+      <UnityPackagePath>$(MSBuildProjectDirectory)/../../src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity</UnityPackagePath>
+      <NativeBuildDebug>$(MSBuildProjectDirectory)/../../native/moqnet-ffi/target/debug</NativeBuildDebug>
+      <NativeBuildRelease>$(MSBuildProjectDirectory)/../../native/moqnet-ffi/target/release</NativeBuildRelease>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(UnityPackagePath)/Plugins/macOS" Condition="!Exists('$(UnityPackagePath)/Plugins/macOS')" />
+    <MakeDir Directories="$(UnityPackagePath)/Plugins/Windows/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Windows/x86_64')" />
+    <MakeDir Directories="$(UnityPackagePath)/Plugins/Linux/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Linux/x86_64')" />
+
+    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.dylib" DestinationFolder="$(UnityPackagePath)/Plugins/macOS" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.dylib')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.dylib" DestinationFolder="$(UnityPackagePath)/Plugins/macOS" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.dylib')" />
+    <Copy SourceFiles="$(NativeBuildDebug)/moqnet_ffi.dll" DestinationFolder="$(UnityPackagePath)/Plugins/Windows/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/moqnet_ffi.dll')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/moqnet_ffi.dll" DestinationFolder="$(UnityPackagePath)/Plugins/Windows/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/moqnet_ffi.dll')" />
+    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.so" DestinationFolder="$(UnityPackagePath)/Plugins/Linux/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.so')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.so" DestinationFolder="$(UnityPackagePath)/Plugins/Linux/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.so')" />
+
+    <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../scripts/bundle-upm-native-source.sh&quot; &quot;$(UnityPackagePath)&quot;" Condition="Exists('$(UnityPackagePath)')" />
+    <Message Importance="high" Text="Synced native libraries to Unity package (if available)" />
+  </Target>
+
+</Project>

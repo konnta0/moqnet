@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>MoqNet.Client</PackageId>
+    <RootNamespace>MoqNet.Client</RootNamespace>
+    <AssemblyName>MoqNet.Client</AssemblyName>
+    <Description>MIT-licensed high-level async MoQ client for .NET 8.0+. Depends on MoqNet.Native, which bundles moq native binaries licensed under MIT OR Apache-2.0.</Description>
+    <PackageTags>moq;quic;webtransport;media;async</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="THIRD_PARTY_NOTICES.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\licenses\moq-APACHE-2.0.txt" Pack="true" PackagePath="licenses\" Link="licenses\moq-APACHE-2.0.txt" />
+    <None Include="..\..\licenses\moq-MIT.txt" Pack="true" PackagePath="licenses\" Link="licenses\moq-MIT.txt" />
+    <None Include="..\..\licenses\moq-NOTICE.md" Pack="true" PackagePath="licenses\" Link="licenses\moq-NOTICE.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MoqNet.Native\MoqNet.Native.csproj" />
+  </ItemGroup>
+
+</Project>

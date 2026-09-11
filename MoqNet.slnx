@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/MoqNet.Native/MoqNet.Native.csproj" />
+    <Project Path="src/MoqNet.Client/MoqNet.Client.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MoqNet.Native.Tests/MoqNet.Native.Tests.csproj" />
+    <Project Path="tests/MoqNet.Client.Tests/MoqNet.Client.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,47 @@
+[package]
+name = "moqnet_ffi"
+version = "0.3.17"
+edition = "2021"
+authors = ["konnta0"]
+license = "MIT"
+description = "C ABI for MoQ (moq-net / moq-native) used by MoqNet C# / Unity bindings"
+repository = "https://github.com/konnta0/moqnet"
+rust-version = "1.91"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+name = "moqnet_ffi"
+
+[features]
+default = ["audio", "video"]
+audio = ["dep:moq-audio"]
+video = ["dep:moq-video", "dep:pollster"]
+# Linux hardware encoders; optional because they need extra system deps.
+linux-gpu = ["video", "moq-video/nvidia", "moq-video/vaapi"]
+
+[dependencies]
+bytes = "1"
+libc = "0.2"
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+url = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+moq-net = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
+moq-native = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
+hang = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
+moq-mux = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
+moq-json = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
+moq-audio = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0", optional = true, features = ["aac"] }
+moq-video = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0", optional = true }
+pollster = { version = "0.4", optional = true }
+
+[build-dependencies]
+csbindgen = "1.9"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
