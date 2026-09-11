@@ -1,0 +1,191 @@
+name: Publish Native
+
+on:
+  push:
+    tags:
+      - "native/v*"
+  workflow_call:
+    inputs:
+      version:
+        description: "Package version (e.g., 0.3.17.0)"
+        required: true
+        type: string
+    secrets:
+      NUGET_API_KEY:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (e.g., 0.3.17.0)"
+        required: true
+      force:
+        description: "Force overwrite existing release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rid: win-x64
+            lib: moqnet_ffi.dll
+            features: audio,video
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            rid: win-arm64
+            lib: moqnet_ffi.dll
+            features: audio
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rid: linux-x64
+            lib: libmoqnet_ffi.so
+            features: audio,video
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            rid: linux-arm64
+            lib: libmoqnet_ffi.so
+            features: audio
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            rid: osx-x64
+            lib: libmoqnet_ffi.dylib
+            features: audio,video
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            rid: osx-arm64
+            lib: libmoqnet_ffi.dylib
+            features: audio,video
+          - os: macos-latest
+            target: aarch64-apple-ios
+            rid: ios-arm64
+            lib: libmoqnet_ffi.a
+            features: audio
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/moqnet-ffi
+          key: ${{ matrix.target }}-${{ matrix.features }}
+
+      - name: Install Linux ARM64 linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Install Linux x64 build deps
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y g++
+
+      - name: Build
+        working-directory: native/moqnet-ffi
+        shell: bash
+        run: |
+          EXTRA=()
+          if [[ "${{ matrix.target }}" == *apple-ios* ]]; then
+            EXTRA+=(--config 'lib.crate-type=["staticlib"]')
+          fi
+          cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }} "${EXTRA[@]}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/moqnet-ffi/target/${{ matrix.target }}/release/${{ matrix.lib }}
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native/output
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/native/v}
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=native/v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag (if manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="${{ steps.version.outputs.tag }}"
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            git tag -f "$TAG"
+            git push origin "$TAG" --force
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Copy native libraries
+        run: |
+          mkdir -p src/MoqNet.Native/runtimes
+          for rid in win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64 ios-arm64; do
+            mkdir -p "src/MoqNet.Native/runtimes/$rid/native"
+            cp -r native/output/native-$rid/* "src/MoqNet.Native/runtimes/$rid/native/" || true
+          done
+
+      - name: Pack
+        run: |
+          dotnet restore MoqNet.sln
+          dotnet pack src/MoqNet.Native -c Release -o nupkgs -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-native
+          path: nupkgs/*.nupkg
+
+      - name: Publish to NuGet
+        if: ${{ secrets.NUGET_API_KEY != '' }}
+        run: dotnet nuget push nupkgs/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Delete existing release (if force)
+        if: github.event.inputs.force == 'true'
+        run: gh release delete "${{ steps.version.outputs.tag }}" --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Native ${{ steps.version.outputs.version }}
+          files: nupkgs/*.nupkg
+          generate_release_notes: true

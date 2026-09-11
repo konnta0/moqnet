@@ -1,0 +1,195 @@
+name: Publish Unity
+
+on:
+  push:
+    tags:
+      - "unity/v*"
+  workflow_call:
+    inputs:
+      version:
+        description: "Package version (e.g., 0.3.17.0)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Package version (e.g., 0.3.17.0). UPM SemVer becomes 0.3.17-native.0"
+        required: true
+      force:
+        description: "Force overwrite existing release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-native:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            rid: win-x64
+            lib: moqnet_ffi.dll
+            features: audio,video
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            rid: linux-x64
+            lib: libmoqnet_ffi.so
+            features: audio,video
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            rid: osx-x64
+            lib: libmoqnet_ffi.dylib
+            features: audio,video
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            rid: osx-arm64
+            lib: libmoqnet_ffi.dylib
+            features: audio,video
+          - os: macos-latest
+            target: aarch64-apple-ios
+            rid: ios-arm64
+            lib: libmoqnet_ffi.a
+            features: audio
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/moqnet-ffi
+          key: unity-${{ matrix.target }}-${{ matrix.features }}
+
+      - name: Install Linux x64 build deps
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++
+
+      - name: Build
+        working-directory: native/moqnet-ffi
+        shell: bash
+        run: |
+          EXTRA=()
+          if [[ "${{ matrix.target }}" == *apple-ios* ]]; then
+            EXTRA+=(--config 'lib.crate-type=["staticlib"]')
+          fi
+          cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }} "${EXTRA[@]}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/moqnet-ffi/target/${{ matrix.target }}/release/${{ matrix.lib }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: build-native
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: native/output
+
+      - name: Extract version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/unity/v}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=unity/v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "upm=$(./scripts/upm-version.sh "$VERSION")" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag (if manual)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          TAG="${{ steps.version.outputs.tag }}"
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            git tag -f "$TAG"
+            git push origin "$TAG" --force
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Assemble UPM package
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          UPM_VERSION="${{ steps.version.outputs.upm }}"
+          UNITY_PKG="src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity"
+
+          chmod +x scripts/generate-unity-meta.sh scripts/bundle-upm-native-source.sh scripts/upm-version.sh
+          ./scripts/generate-unity-meta.sh "$UNITY_PKG" native/output native
+          ./scripts/bundle-upm-native-source.sh "$UNITY_PKG"
+
+          jq --arg v "$UPM_VERSION" '.version = $v' "$UNITY_PKG/package.json" > tmp.json
+          mv tmp.json "$UNITY_PKG/package.json"
+
+          echo "Assembled UPM $UPM_VERSION from NuGet $VERSION"
+          find "$UNITY_PKG" -type f | sort
+
+      - name: Package UPM tgz
+        run: |
+          mkdir -p packages
+          tar -C src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity -czf \
+            "packages/com.moqnet.unity-${{ steps.version.outputs.upm }}.tgz" .
+
+      - name: Upload UPM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: unity-packages
+          path: packages/*.tgz
+
+      - name: Delete existing release (if force)
+        if: github.event.inputs.force == 'true'
+        run: gh release delete "${{ steps.version.outputs.tag }}" --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Unity ${{ steps.version.outputs.version }}
+          files: packages/*.tgz
+          generate_release_notes: true
+
+      - name: Push upm branch
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          UNITY_PKG="src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity"
+          cd "$UNITY_PKG"
+          git init -b upm
+          git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Release $VERSION"
+          git push -f origin upm
+          git tag "upm/v$VERSION"
+          git push origin "upm/v$VERSION" --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -20,7 +20,7 @@ C# / Unity bindings for [Media over QUIC](https://github.com/moq-dev/moq) — em
 
 **Available:** Client / Session / Origin / Broadcast / raw tracks / media catalog / JSON tracks / Server / audio / video encode helpers. .NET 8+ and Unity 2021.3+ on desktop.
 
-**Caveats:** Mobile libraries need a [manual cross-build](docs/mobile-build-guide.md). Performance is not fully tuned.
+**Caveats:** Android libraries need a [manual cross-build](docs/mobile-build-guide.md). iOS device binaries ship in the `unity/v*` UPM package. Performance is not fully tuned.
 
 Terms: [LICENSE](LICENSE) (MIT for this repo) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (MIT OR Apache-2.0 for the bundled moq runtime)
 
@@ -103,7 +103,8 @@ public class MoqExample : MonoBehaviour
 | Windows | x64, ARM64 | Supported (host build) |
 | Linux | x64, ARM64 | Supported (host build) |
 | macOS | x64, ARM64 | Supported (host build) |
-| Android / iOS | | Via [cross-build](docs/mobile-build-guide.md) |
+| Android | arm64-v8a, armeabi-v7a, x86_64 | Via [cross-build](docs/mobile-build-guide.md) |
+| iOS | arm64 | Device binary in `unity/v*` UPM; simulators via [cross-build](docs/mobile-build-guide.md) |
 
 ## Building from Source
 
@@ -118,6 +119,31 @@ dotnet test MoqNet.sln
 
 Default native features are `audio,video`. Override with `MOQNET_FEATURES=audio ./scripts/build-native.sh`. Linux GPU encoders (NVENC / VAAPI) are behind the optional `linux-gpu` feature.
 
+Mobile (audio only):
+
+```bash
+./scripts/build-android.sh   # requires ANDROID_NDK_HOME
+./scripts/build-ios.sh       # macOS + Xcode
+./scripts/pack-upm.sh
+```
+
 ## Versioning
 
 `{MoqFfiVersion}.{dotnet-patch}` in [build/Versions.props](build/Versions.props). UPM uses `{MoqFfiVersion}-native.{dotnet-patch}`.
+
+`./scripts/verify-versions.sh` checks `Versions.props`, `native/moqnet-ffi/Cargo.toml`, and the UPM `package.json`.
+
+## CI and publishing
+
+GitHub Actions on `main` / PRs: version check, Linux native build + `dotnet test MoqNet.sln`, UPM metadata validation.
+
+Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.0`):
+
+| Tag | Workflow | Output |
+|-----|----------|--------|
+| `v0.3.17.0` | `create-tags.yml` | Creates `native/v*`, `client/v*`, `unity/v*` |
+| `native/v0.3.17.0` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
+| `client/v0.3.17.0` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
+| `unity/v0.3.17.0` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
+
+NuGet push runs only when the `NUGET_API_KEY` repository secret is set. UPM consumers can add the `upm` branch or the release `.tgz`.
