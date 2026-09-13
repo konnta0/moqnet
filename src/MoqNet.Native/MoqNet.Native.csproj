@@ -59,6 +59,11 @@
       <PackagePath>runtimes/osx-arm64/native</PackagePath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="runtimes/ios-arm64/native/*.*" Condition="Exists('runtimes/ios-arm64/native')">
+      <Pack>true</Pack>
+      <PackagePath>runtimes/ios-arm64/native</PackagePath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <!-- Local development: copy the host native library next to the managed assembly. -->
@@ -95,13 +100,15 @@
     <MakeDir Directories="$(UnityPackagePath)/Plugins/macOS" Condition="!Exists('$(UnityPackagePath)/Plugins/macOS')" />
     <MakeDir Directories="$(UnityPackagePath)/Plugins/Windows/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Windows/x86_64')" />
     <MakeDir Directories="$(UnityPackagePath)/Plugins/Linux/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Linux/x86_64')" />
+    <MakeDir Directories="$(UnityPackagePath)/Plugins/iOS" Condition="!Exists('$(UnityPackagePath)/Plugins/iOS')" />
 
-    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.dylib" DestinationFolder="$(UnityPackagePath)/Plugins/macOS" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.dylib')" />
-    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.dylib" DestinationFolder="$(UnityPackagePath)/Plugins/macOS" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.dylib')" />
-    <Copy SourceFiles="$(NativeBuildDebug)/moqnet_ffi.dll" DestinationFolder="$(UnityPackagePath)/Plugins/Windows/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/moqnet_ffi.dll')" />
-    <Copy SourceFiles="$(NativeBuildRelease)/moqnet_ffi.dll" DestinationFolder="$(UnityPackagePath)/Plugins/Windows/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/moqnet_ffi.dll')" />
-    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.so" DestinationFolder="$(UnityPackagePath)/Plugins/Linux/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.so')" />
-    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.so" DestinationFolder="$(UnityPackagePath)/Plugins/Linux/x86_64" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.so')" />
+    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.dylib" DestinationFiles="$(UnityPackagePath)/Plugins/macOS/moqnet_ffi.dylib" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.dylib')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.dylib" DestinationFiles="$(UnityPackagePath)/Plugins/macOS/moqnet_ffi.dylib" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.dylib')" />
+    <Copy SourceFiles="$(NativeBuildDebug)/moqnet_ffi.dll" DestinationFiles="$(UnityPackagePath)/Plugins/Windows/x86_64/moqnet_ffi.dll" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/moqnet_ffi.dll')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/moqnet_ffi.dll" DestinationFiles="$(UnityPackagePath)/Plugins/Windows/x86_64/moqnet_ffi.dll" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/moqnet_ffi.dll')" />
+    <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.so" DestinationFiles="$(UnityPackagePath)/Plugins/Linux/x86_64/moqnet_ffi.so" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.so')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.so" DestinationFiles="$(UnityPackagePath)/Plugins/Linux/x86_64/moqnet_ffi.so" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.so')" />
+    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.a" DestinationFiles="$(UnityPackagePath)/Plugins/iOS/moqnet_ffi.a" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.a')" />
 
     <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../scripts/bundle-upm-native-source.sh&quot; &quot;$(UnityPackagePath)&quot;" Condition="Exists('$(UnityPackagePath)')" />
     <Message Importance="high" Text="Synced native libraries to Unity package (if available)" />

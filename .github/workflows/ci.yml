@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-versions:
+    name: Verify versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version alignment
+        run: ./scripts/verify-versions.sh
+
+  native-and-test:
+    name: Native build and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/moqnet-ffi
+
+      - name: Install native build deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++
+
+      - name: Build moqnet-ffi
+        env:
+          MOQNET_FEATURES: audio,video
+        run: ./scripts/build-native.sh
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Copy bindings and run tests
+        run: |
+          ./scripts/copy-bindings.sh
+          mkdir -p src/MoqNet.Native/runtimes/linux-x64/native
+          cp native/output/linux-x64/libmoqnet_ffi.so src/MoqNet.Native/runtimes/linux-x64/native/
+          dotnet test MoqNet.sln -c Release --nologo
+
+  validate-unity:
+    name: Validate Unity package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package.json
+        run: |
+          UNITY_PKG="src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity"
+          jq -e '.name == "com.moqnet.unity"' "$UNITY_PKG/package.json" >/dev/null
+          PACKAGE_VERSION="$(grep -E '<Version>' build/Versions.props | sed -E 's/.*<Version>([^<]+)<.*/\1/')"
+          UPM_VERSION="$(./scripts/upm-version.sh "$PACKAGE_VERSION")"
+          jq -e --arg v "$UPM_VERSION" '.version == $v' "$UNITY_PKG/package.json" >/dev/null
+          test -f "$UNITY_PKG/Runtime/Native/NativeMethods.g.cs"
+          echo "OK (NuGet $PACKAGE_VERSION, UPM $UPM_VERSION)"
+
+      - name: Smoke-test UPM meta generation
+        run: |
+          set -euo pipefail
+          TMP="$(mktemp -d)"
+          mkdir -p "$TMP/native-linux-x64" "$TMP/native-win-x64" "$TMP/native-android-arm64"
+          echo fake > "$TMP/native-linux-x64/libmoqnet_ffi.so"
+          echo fake > "$TMP/native-win-x64/moqnet_ffi.dll"
+          echo fake > "$TMP/native-android-arm64/libmoqnet_ffi.so"
+          PKG="$(mktemp -d)"
+          ./scripts/generate-unity-meta.sh "$PKG" "$TMP" native
+          test -f "$PKG/Plugins/Linux/x86_64/moqnet_ffi.so"
+          test -f "$PKG/Plugins/Linux/x86_64/moqnet_ffi.so.meta"
+          test -f "$PKG/Plugins/Windows/x86_64/moqnet_ffi.dll.meta"
+          test -f "$PKG/Plugins/Android/arm64-v8a/libmoqnet_ffi.so.meta"

@@ -1,0 +1,71 @@
+name: Create Release Tags
+
+# A v* tag (or manual dispatch) creates native/client/unity package tags.
+# Those tags trigger the corresponding publish workflows.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Shared package version (e.g. 0.3.17.0)"
+        required: true
+      force:
+        description: "Force overwrite existing package tags"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  create-tags:
+    name: Create Package Tags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify version alignment
+        run: ./scripts/verify-versions.sh
+
+      - name: Extract version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+          PACKAGE_VERSION="$(grep -E '<Version>' build/Versions.props | head -1 | sed -E 's/.*<Version>([^<]+)<.*/\1/' | tr -d '[:space:]')"
+          if [ "$VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "Tag/input version '$VERSION' does not match Versions.props Version '$PACKAGE_VERSION'" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create package tags
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          FORCE="${{ github.event.inputs.force }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for prefix in native client unity; do
+            TAG="${prefix}/v${VERSION}"
+            echo "Creating tag: $TAG"
+            if [ "$FORCE" = "true" ]; then
+              git tag -f "$TAG"
+              git push origin "$TAG" --force
+            elif git rev-parse "$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists (use force to overwrite)"
+            else
+              git tag "$TAG"
+              git push origin "$TAG"
+            fi
+          done
