@@ -146,4 +146,11 @@ Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.
 | `client/v0.3.17.0` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
 | `unity/v0.3.17.0` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
 
-NuGet push runs only when the `NUGET_API_KEY` repository secret is set. UPM consumers can add the `upm` branch or the release `.tgz`.
+NuGet publishing uses nuget.org Trusted Publishing; no long-lived API key is stored in GitHub. Create two policies with package owner `konnta`, repository owner `konnta0`, repository `moqnet`, no environment, and the **Push new packages and package versions** scope:
+
+| Workflow file | Package glob |
+|---------------|--------------|
+| `publish-native.yml` | `MoqNet.Native` |
+| `publish-client.yml` | `MoqNet.Client` |
+
+UPM consumers can add the `upm` branch or the release `.tgz`.

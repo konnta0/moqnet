@@ -10,9 +10,6 @@ on:
         description: "Package version (e.g., 0.3.17.0)"
         required: true
         type: string
-    secrets:
-      NUGET_API_KEY:
-        required: false
   workflow_dispatch:
     inputs:
       version:
@@ -25,6 +22,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -172,15 +170,14 @@ jobs:
           name: nuget-native
           path: nupkgs/*.nupkg
 
+      - name: Log in to NuGet
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: konnta
+
       - name: Publish to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "NUGET_API_KEY is not configured; skipping NuGet publish"
-            exit 0
-          fi
-          dotnet nuget push nupkgs/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        run: dotnet nuget push nupkgs/*.nupkg --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Delete existing release (if force)
         if: github.event.inputs.force == 'true'
