@@ -31,9 +31,9 @@ jobs:
     name: Publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
 
@@ -70,14 +70,20 @@ jobs:
           dotnet pack src/MoqNet.Client -c Release -o packages -p:Version=${{ steps.version.outputs.version }}
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nuget-client
           path: packages/*.nupkg
 
       - name: Publish to NuGet
-        if: ${{ secrets.NUGET_API_KEY != '' }}
-        run: dotnet nuget push packages/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "NUGET_API_KEY is not configured; skipping NuGet publish"
+            exit 0
+          fi
+          dotnet nuget push packages/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Delete existing release (if force)
         if: github.event.inputs.force == 'true'

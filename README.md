@@ -141,7 +141,7 @@ Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.
 
 | Tag | Workflow | Output |
 |-----|----------|--------|
-| `v0.3.17.0` | `create-tags.yml` | Creates `native/v*`, `client/v*`, `unity/v*` |
+| `v0.3.17.0` | `create-tags.yml` | Creates package tags and runs all publish workflows |
 | `native/v0.3.17.0` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
 | `client/v0.3.17.0` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
 | `unity/v0.3.17.0` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |

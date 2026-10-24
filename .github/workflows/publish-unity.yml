@@ -59,7 +59,7 @@ jobs:
             features: audio
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -85,7 +85,7 @@ jobs:
           cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }} "${EXTRA[@]}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.rid }}
           path: native/moqnet-ffi/target/${{ matrix.target }}/release/${{ matrix.lib }}
@@ -97,10 +97,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: native/output
 
@@ -157,7 +157,7 @@ jobs:
             "packages/com.moqnet.unity-${{ steps.version.outputs.upm }}.tgz" .
 
       - name: Upload UPM package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unity-packages
           path: packages/*.tgz

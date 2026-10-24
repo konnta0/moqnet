@@ -1,7 +1,8 @@
 name: Create Release Tags
 
-# A v* tag (or manual dispatch) creates native/client/unity package tags.
-# Those tags trigger the corresponding publish workflows.
+# A v* tag (or manual dispatch) creates native/client/unity package tags and
+# calls the corresponding publish workflows. Tags pushed with GITHUB_TOKEN do
+# not start new workflow runs, so the explicit workflow calls are required.
 
 on:
   push:
@@ -24,8 +25,10 @@ jobs:
   create-tags:
     name: Create Package Tags
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -69,3 +72,28 @@ jobs:
               git push origin "$TAG"
             fi
           done
+
+  publish-native:
+    name: Publish Native
+    needs: create-tags
+    uses: ./.github/workflows/publish-native.yml
+    with:
+      version: ${{ needs.create-tags.outputs.version }}
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  publish-client:
+    name: Publish Client
+    needs: [create-tags, publish-native]
+    uses: ./.github/workflows/publish-client.yml
+    with:
+      version: ${{ needs.create-tags.outputs.version }}
+    secrets:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+  publish-unity:
+    name: Publish Unity
+    needs: create-tags
+    uses: ./.github/workflows/publish-unity.yml
+    with:
+      version: ${{ needs.create-tags.outputs.version }}
