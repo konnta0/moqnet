@@ -98,6 +98,7 @@ jobs:
         run: |
           EXTRA=()
           if [[ "${{ matrix.target }}" == *apple-ios* ]]; then
+            export IPHONEOS_DEPLOYMENT_TARGET=15.0
             EXTRA+=(--config 'lib.crate-type=["staticlib"]')
           fi
           cargo build --release --target ${{ matrix.target }} --no-default-features --features ${{ matrix.features }} "${EXTRA[@]}"

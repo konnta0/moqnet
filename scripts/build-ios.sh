@@ -16,10 +16,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CRATE="$ROOT/native/moqnet-ffi"
 OUT="$ROOT/native/output"
 FEATURES="${MOQNET_FEATURES:-audio}"
+export IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-15.0}"
 
 echo "======================================"
 echo "Building MoqNet FFI for iOS"
 echo "Features: $FEATURES"
+echo "Deployment target: iOS $IPHONEOS_DEPLOYMENT_TARGET"
 echo "======================================"
 
 cd "$CRATE"
