@@ -1,0 +1,146 @@
+@page "/subscribe"
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject Microsoft.Extensions.Options.IOptions<MoqNetOptions> Options
+
+<PageTitle>Subscribe</PageTitle>
+
+<h1>Subscribe</h1>
+<p>Open several tabs to fan the same broadcast out to multiple web receivers.</p>
+
+<div class="stage">
+    <img id="remote-preview" alt="Remote preview" />
+</div>
+
+<p class="status">@(_status)</p>
+@if (!string.IsNullOrEmpty(_detail))
+{
+    <p class="detail">@_detail</p>
+}
+
+<div class="actions">
+    <button type="button" disabled="@(_busy || _running)" @onclick="StartAsync">Start</button>
+    <button type="button" class="ghost" disabled="@(!_running)" @onclick="StopAsync">Stop</button>
+</div>
+
+@code {
+    private LiveSubscriberSession? _session;
+    private IJSObjectReference? _media;
+    private bool _busy;
+    private bool _running;
+    private string _status = "Idle.";
+    private string? _detail;
+    private int _frames;
+    private int _pcm;
+
+    private async Task StartAsync()
+    {
+        if (_running || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _status = "Connecting…";
+        _detail = null;
+        _frames = 0;
+        _pcm = 0;
+        try
+        {
+            _media = await Js.InvokeAsync<IJSObjectReference>("import", "./js/live.js");
+            await _media.InvokeVoidAsync("startPlayback");
+            _session = new LiveSubscriberSession();
+            _session.PcmReceived += OnPcm;
+            _session.JpegReceived += OnJpeg;
+            await _session.StartAsync(Options.Value.RelayUrl, Options.Value.TlsDisableVerify);
+            _running = true;
+            _status = "Listening for samples/live.";
+        }
+        catch (Exception ex)
+        {
+            _detail = ex.Message;
+            _status = "Subscribe failed.";
+            await StopAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void OnPcm(byte[] payload)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (_media is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await _media.InvokeVoidAsync("playPcm", payload);
+                _pcm++;
+                _status = $"Receiving. audio={_pcm} preview={_frames}";
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        });
+    }
+
+    private void OnJpeg(byte[] payload)
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (_media is null)
+            {
+                return;
+            }
+
+            try
+            {
+                await _media.InvokeVoidAsync("showJpeg", payload);
+                _frames++;
+                _status = $"Receiving. audio={_pcm} preview={_frames}";
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        });
+    }
+
+    private async Task StopAsync()
+    {
+        _running = false;
+        if (_session is not null)
+        {
+            _session.PcmReceived -= OnPcm;
+            _session.JpegReceived -= OnJpeg;
+            await _session.DisposeAsync();
+            _session = null;
+        }
+
+        if (_media is not null)
+        {
+            try
+            {
+                await _media.InvokeVoidAsync("stop");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            await _media.DisposeAsync();
+            _media = null;
+        }
+
+        if (_status.StartsWith("Receiving", StringComparison.Ordinal) || _status.StartsWith("Listening", StringComparison.Ordinal))
+        {
+            _status = "Stopped.";
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync() => await StopAsync();
+}

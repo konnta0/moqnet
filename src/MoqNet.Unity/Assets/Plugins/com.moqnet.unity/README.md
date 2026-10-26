@@ -8,4 +8,6 @@ TLS verification is on by default. `SetTlsDisableVerify(true)` is for developmen
 
 Native C# sources live in `Runtime/Native/` so Unity applies platform-specific `DllImport` names from the generated bindings.
 
-Mobile libraries need a manual cross-build (see the repository `docs/mobile-build-guide.md`).
+The published package includes an iOS XCFramework for arm64 devices and arm64/x64 Simulators.
+It requires Unity 2021.3.37f1 or newer. Android libraries still need a manual cross-build
+(see the repository `docs/mobile-build-guide.md`).

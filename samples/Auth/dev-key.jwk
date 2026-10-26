@@ -1,0 +1,6 @@
+{
+  "kty": "oct",
+  "alg": "HS256",
+  "key_ops": ["verify"],
+  "k": "bW9xbmV0LWRldi1vbmx5LXNlY3JldC1rZXktMzJieXRlcw"
+}

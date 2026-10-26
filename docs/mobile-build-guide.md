@@ -79,8 +79,10 @@ native/output/
 │   └── libmoqnet_ffi.a
 ├── ios-sim-x64/        # iOS Simulator (Intel)
 │   └── libmoqnet_ffi.a
-└── ios-sim-universal/  # lipo of both simulator slices (when both exist)
-    └── libmoqnet_ffi.a
+├── ios-sim-universal/  # lipo of both simulator slices (when both exist)
+│   └── libmoqnet_ffi.a
+└── ios-xcframework/
+    └── moqnet_ffi.xcframework  # Device + Simulator variants
 ```
 
 `generate-unity-meta.sh` copies them into the UPM package:
@@ -92,12 +94,12 @@ src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity/Plugins/
 │   ├── armeabi-v7a/libmoqnet_ffi.so
 │   └── x86_64/libmoqnet_ffi.so
 └── iOS/
-    └── moqnet_ffi.a
+    └── moqnet_ffi.xcframework
 ```
 
-Android keeps the `lib` prefix (`DllImport("moqnet_ffi")` → `libmoqnet_ffi.so`). Desktop Linux/macOS and iOS strip it so Unity can resolve `moqnet_ffi`. iOS player builds use `__Internal` and link the static archive.
+Android keeps the `lib` prefix (`DllImport("moqnet_ffi")` → `libmoqnet_ffi.so`). Desktop Linux/macOS strip it so Unity can resolve `moqnet_ffi`. iOS player builds use `__Internal`; Xcode selects the device or Simulator static archive from the XCFramework.
 
-Published `unity/v*` packages include desktop + iOS device binaries. Android libraries are produced locally with `build-android.sh` until a mobile CI job is added.
+Published `unity/v*` packages include desktop binaries plus an iOS XCFramework for arm64 devices and arm64/x64 Simulators. Android libraries are produced locally with `build-android.sh` until a mobile CI job is added.
 
 ## Unity configuration
 
@@ -109,12 +111,12 @@ Minimum: **API 21** (Android 5.0). IL2CPP is recommended.
 
 ### iOS
 
-The device library is a static `.a` for `arm64`. Unity links it when building Xcode. iOS rustc cannot emit `cdylib`, so the scripts pass `--config 'lib.crate-type=["staticlib"]'`.
+The XCFramework contains separate static archives for iOS devices and Simulators. Do not combine device and Simulator slices with `lipo`; only the two Simulator architectures are combined before `xcodebuild -create-xcframework`. iOS rustc cannot emit `cdylib`, so the scripts pass `--config 'lib.crate-type=["staticlib"]'`.
 
 - IL2CPP backend is required
 - Enable **Allow unsafe code**
-- Minimum: **iOS 12.0**
-- Unity 2021.3 LTS or newer
+- Minimum: **iOS 15.0**
+- Unity **2021.3.37f1** or newer (`.xcframework` plug-in support)
 
 ## Troubleshooting
 
@@ -128,10 +130,10 @@ Confirm `Plugins/Android/<abi>/libmoqnet_ffi.so` exists and the `.meta` CPU matc
 
 ### iOS: undefined symbols
 
-1. Confirm `Plugins/iOS/moqnet_ffi.a` is in the Xcode project
-2. Architecture must be arm64 for devices
+1. Confirm `Plugins/iOS/moqnet_ffi.xcframework` is in the Xcode project
+2. Confirm the XCFramework contains device and Simulator variants
 3. Rebuild with `./scripts/build-ios.sh` on the same Xcode version you ship with
 
 ### iOS: not on macOS
 
-The script exits immediately on Linux/Windows. Use a Mac runner or `publish-unity.yml`, which already builds `aarch64-apple-ios`.
+The script exits immediately on Linux/Windows. Use a Mac runner or `publish-unity.yml`, which builds and packages all three iOS targets.

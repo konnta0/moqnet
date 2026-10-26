@@ -58,6 +58,18 @@ src/MoqNet.Unity/[Uu]ser[Ss]ettings/
 src/MoqNet.Unity/[Mm]emoryCaptures/
 src/MoqNet.Unity/[Rr]ecordings/
 src/MoqNet.Unity/.vs/
+samples/Unity/[Ll]ibrary/
+samples/Unity/[Tt]emp/
+samples/Unity/[Oo]bj/
+samples/Unity/[Bb]uild/
+samples/Unity/[Bb]uilds/
+samples/Unity/[Ll]ogs/
+samples/Unity/[Uu]ser[Ss]ettings/
+samples/Unity/[Mm]emoryCaptures/
+samples/Unity/[Rr]ecordings/
+samples/Unity/.vs/
+samples/Unity/Assets/MoqNet.Samples/*.meta
+samples/Unity/ProjectSettings/*.asset
 *.pidb
 *.pdb.meta
 *.mdb.meta
@@ -66,6 +78,7 @@ sysinfo.txt
 *.aab
 *.unitypackage
 InitTestScene*.unity*
+src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity/Plugins/iOS/*.a
 
 ## OS
 .DS_Store

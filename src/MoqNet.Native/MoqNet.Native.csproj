@@ -83,7 +83,17 @@
       <Link>libmoqnet_ffi.dylib</Link>
       <Visible>false</Visible>
     </None>
+    <None Include="..\..\native\moqnet-ffi\target\release\libmoqnet_ffi.dylib" Condition="Exists('..\..\native\moqnet-ffi\target\release\libmoqnet_ffi.dylib')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>libmoqnet_ffi.dylib</Link>
+      <Visible>false</Visible>
+    </None>
     <None Include="..\..\native\moqnet-ffi\target\debug\moqnet_ffi.dll" Condition="Exists('..\..\native\moqnet-ffi\target\debug\moqnet_ffi.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>moqnet_ffi.dll</Link>
+      <Visible>false</Visible>
+    </None>
+    <None Include="..\..\native\moqnet-ffi\target\release\moqnet_ffi.dll" Condition="Exists('..\..\native\moqnet-ffi\target\release\moqnet_ffi.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>moqnet_ffi.dll</Link>
       <Visible>false</Visible>
@@ -95,12 +105,12 @@
       <UnityPackagePath>$(MSBuildProjectDirectory)/../../src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity</UnityPackagePath>
       <NativeBuildDebug>$(MSBuildProjectDirectory)/../../native/moqnet-ffi/target/debug</NativeBuildDebug>
       <NativeBuildRelease>$(MSBuildProjectDirectory)/../../native/moqnet-ffi/target/release</NativeBuildRelease>
+      <NativeOutput>$(MSBuildProjectDirectory)/../../native/output</NativeOutput>
     </PropertyGroup>
 
     <MakeDir Directories="$(UnityPackagePath)/Plugins/macOS" Condition="!Exists('$(UnityPackagePath)/Plugins/macOS')" />
     <MakeDir Directories="$(UnityPackagePath)/Plugins/Windows/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Windows/x86_64')" />
     <MakeDir Directories="$(UnityPackagePath)/Plugins/Linux/x86_64" Condition="!Exists('$(UnityPackagePath)/Plugins/Linux/x86_64')" />
-    <MakeDir Directories="$(UnityPackagePath)/Plugins/iOS" Condition="!Exists('$(UnityPackagePath)/Plugins/iOS')" />
 
     <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.dylib" DestinationFiles="$(UnityPackagePath)/Plugins/macOS/moqnet_ffi.dylib" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.dylib')" />
     <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.dylib" DestinationFiles="$(UnityPackagePath)/Plugins/macOS/moqnet_ffi.dylib" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.dylib')" />
@@ -108,7 +118,7 @@
     <Copy SourceFiles="$(NativeBuildRelease)/moqnet_ffi.dll" DestinationFiles="$(UnityPackagePath)/Plugins/Windows/x86_64/moqnet_ffi.dll" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/moqnet_ffi.dll')" />
     <Copy SourceFiles="$(NativeBuildDebug)/libmoqnet_ffi.so" DestinationFiles="$(UnityPackagePath)/Plugins/Linux/x86_64/moqnet_ffi.so" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildDebug)/libmoqnet_ffi.so')" />
     <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.so" DestinationFiles="$(UnityPackagePath)/Plugins/Linux/x86_64/moqnet_ffi.so" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.so')" />
-    <Copy SourceFiles="$(NativeBuildRelease)/libmoqnet_ffi.a" DestinationFiles="$(UnityPackagePath)/Plugins/iOS/moqnet_ffi.a" SkipUnchangedFiles="true" Condition="Exists('$(NativeBuildRelease)/libmoqnet_ffi.a')" />
+    <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../scripts/generate-unity-meta.sh&quot; &quot;$(UnityPackagePath)&quot; &quot;$(NativeOutput)&quot; native" Condition="Exists('$(NativeOutput)/ios-xcframework/moqnet_ffi.xcframework')" />
 
     <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../scripts/bundle-upm-native-source.sh&quot; &quot;$(UnityPackagePath)&quot;" Condition="Exists('$(UnityPackagePath)')" />
     <Message Importance="high" Text="Synced native libraries to Unity package (if available)" />

@@ -1,0 +1,121 @@
+@page "/publish"
+@implements IAsyncDisposable
+@inject IJSRuntime Js
+@inject Microsoft.Extensions.Options.IOptions<MoqNetOptions> Options
+
+<PageTitle>Publish</PageTitle>
+
+<h1>Publish</h1>
+<p>Grant camera and microphone access, or the page falls back to a generated tone and color bars.</p>
+
+<div class="stage">
+    <video id="local-preview" autoplay muted playsinline></video>
+    <canvas id="capture-canvas" width="@SampleProtocol.VideoWidth" height="@SampleProtocol.VideoHeight" hidden></canvas>
+</div>
+
+<p class="status">@(_status)</p>
+@if (!string.IsNullOrEmpty(_detail))
+{
+    <p class="detail">@_detail</p>
+}
+
+<div class="actions">
+    <button type="button" disabled="@(_busy || _running)" @onclick="StartAsync">Start</button>
+    <button type="button" class="ghost" disabled="@(!_running)" @onclick="StopAsync">Stop</button>
+</div>
+
+@code {
+    private LivePublisherSession? _session;
+    private DotNetObjectReference<Publish>? _self;
+    private IJSObjectReference? _media;
+    private bool _busy;
+    private bool _running;
+    private string _status = "Idle.";
+    private string? _detail;
+
+    private async Task StartAsync()
+    {
+        if (_running || _busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _status = "Connecting…";
+        _detail = null;
+        try
+        {
+            _session = new LivePublisherSession();
+            await _session.StartAsync(Options.Value.RelayUrl, Options.Value.TlsDisableVerify);
+            _self = DotNetObjectReference.Create(this);
+            _media = await Js.InvokeAsync<IJSObjectReference>("import", "./js/live.js");
+            var source = await _media.InvokeAsync<string>(
+                "startCapture",
+                _self,
+                SampleProtocol.VideoWidth,
+                SampleProtocol.VideoHeight,
+                SampleProtocol.VideoFps);
+            _running = true;
+            _status = _session.VideoEncoderAvailable
+                ? $"Publishing ({source}). H.264 encoder is on."
+                : $"Publishing ({source}). Preview + Opus only; H.264 encoder is unavailable.";
+        }
+        catch (Exception ex)
+        {
+            _detail = ex.Message;
+            _status = "Publish failed.";
+            await StopAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StopAsync()
+    {
+        _running = false;
+        if (_media is not null)
+        {
+            try
+            {
+                await _media.InvokeVoidAsync("stop");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            await _media.DisposeAsync();
+            _media = null;
+        }
+
+        _self?.Dispose();
+        _self = null;
+
+        if (_session is not null)
+        {
+            await _session.DisposeAsync();
+            _session = null;
+        }
+
+        if (_status.StartsWith("Publishing", StringComparison.Ordinal))
+        {
+            _status = "Stopped.";
+        }
+    }
+
+    /// <summary>Receives one PCM frame from the browser capture graph.</summary>
+    [JSInvokable]
+    public void OnPcm(byte[] payload) => _session?.WritePcm(payload);
+
+    /// <summary>Receives one packed RGBA frame from the capture canvas.</summary>
+    [JSInvokable]
+    public void OnRgba(byte[] payload) => _session?.WriteRgba(payload);
+
+    /// <summary>Receives one JPEG preview frame from the capture canvas.</summary>
+    [JSInvokable]
+    public void OnJpeg(byte[] payload) => _session?.WriteJpeg(payload);
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync() => await StopAsync();
+}

@@ -1,0 +1,116 @@
+:root {
+    color-scheme: dark;
+    --bg: #14110e;
+    --panel: #211c16;
+    --ink: #f4efe6;
+    --muted: #b9ae9c;
+    --accent: #e07a3d;
+    --line: #3a3228;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+}
+
+.shell {
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem 3rem;
+}
+
+.top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 0.85rem;
+    margin-bottom: 1.75rem;
+}
+
+.brand {
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+nav {
+    display: flex;
+    gap: 1rem;
+}
+
+nav a {
+    color: var(--muted);
+    text-decoration: none;
+}
+
+nav a.active, nav a:hover { color: var(--accent); }
+
+h1 { font-size: 2.1rem; margin: 0 0 0.6rem; }
+h2 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+.lede, p { color: var(--muted); line-height: 1.55; }
+code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--ink);
+}
+
+.cards {
+    display: grid;
+    gap: 1rem;
+}
+
+@media (min-width: 720px) {
+    .cards { grid-template-columns: repeat(3, 1fr); }
+}
+
+.cards article, .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.button, button {
+    display: inline-block;
+    background: var(--accent);
+    color: #1b120c;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.55rem 1rem;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+}
+
+.actions { display: flex; gap: 0.6rem; margin-top: 1rem; }
+
+.stage {
+    min-height: 200px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+
+.stage video, .stage img {
+    width: 100%;
+    max-height: 280px;
+    object-fit: contain;
+    background: #0b0907;
+}
+
+.status { color: var(--ink); }
+.detail { color: #e7b3a0; }

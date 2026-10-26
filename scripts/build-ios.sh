@@ -57,4 +57,22 @@ if [[ -f "$OUT/ios-sim-arm64/libmoqnet_ffi.a" && -f "$OUT/ios-sim-x64/libmoqnet_
   echo "Created $OUT/ios-sim-universal/libmoqnet_ffi.a"
 fi
 
+SIM_LIB="$OUT/ios-sim-arm64/libmoqnet_ffi.a"
+if [[ -f "$OUT/ios-sim-universal/libmoqnet_ffi.a" ]]; then
+  SIM_LIB="$OUT/ios-sim-universal/libmoqnet_ffi.a"
+fi
+
+if [[ -f "$OUT/ios-arm64/libmoqnet_ffi.a" && -f "$SIM_LIB" ]]; then
+  echo ""
+  echo "Creating iOS XCFramework..."
+  XCFRAMEWORK_DIR="$OUT/ios-xcframework/moqnet_ffi.xcframework"
+  rm -rf "$XCFRAMEWORK_DIR"
+  mkdir -p "$OUT/ios-xcframework"
+  xcodebuild -create-xcframework \
+    -library "$OUT/ios-arm64/libmoqnet_ffi.a" \
+    -library "$SIM_LIB" \
+    -output "$XCFRAMEWORK_DIR"
+  echo "Created $XCFRAMEWORK_DIR"
+fi
+
 echo "iOS build complete."

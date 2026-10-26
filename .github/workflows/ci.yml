@@ -51,6 +51,10 @@ jobs:
           mkdir -p src/MoqNet.Native/runtimes/linux-x64/native
           cp native/output/linux-x64/libmoqnet_ffi.so src/MoqNet.Native/runtimes/linux-x64/native/
           dotnet test MoqNet.sln -c Release --nologo
+          dotnet build samples/Auth/MoqNet.Samples.Auth.csproj -c Release --nologo
+          dotnet build samples/Relay/MoqNet.Samples.Relay.csproj -c Release --nologo
+          dotnet build samples/Web/MoqNet.Samples.Web.csproj -c Release --nologo
+          dotnet run --project samples/Smoke/MoqNet.Samples.Smoke.csproj -c Release --no-launch-profile --nologo
 
   validate-unity:
     name: Validate Unity package
@@ -71,13 +75,17 @@ jobs:
         run: |
           set -euo pipefail
           TMP="$(mktemp -d)"
-          mkdir -p "$TMP/native-linux-x64" "$TMP/native-win-x64" "$TMP/native-android-arm64"
+          mkdir -p "$TMP/native-linux-x64" "$TMP/native-win-x64" "$TMP/native-android-arm64" \
+            "$TMP/native-ios-xcframework/moqnet_ffi.xcframework"
           echo fake > "$TMP/native-linux-x64/libmoqnet_ffi.so"
           echo fake > "$TMP/native-win-x64/moqnet_ffi.dll"
           echo fake > "$TMP/native-android-arm64/libmoqnet_ffi.so"
+          echo fake > "$TMP/native-ios-xcframework/moqnet_ffi.xcframework/Info.plist"
           PKG="$(mktemp -d)"
           ./scripts/generate-unity-meta.sh "$PKG" "$TMP" native
           test -f "$PKG/Plugins/Linux/x86_64/moqnet_ffi.so"
           test -f "$PKG/Plugins/Linux/x86_64/moqnet_ffi.so.meta"
           test -f "$PKG/Plugins/Windows/x86_64/moqnet_ffi.dll.meta"
           test -f "$PKG/Plugins/Android/arm64-v8a/libmoqnet_ffi.so.meta"
+          test -f "$PKG/Plugins/iOS/moqnet_ffi.xcframework/Info.plist"
+          test -f "$PKG/Plugins/iOS/moqnet_ffi.xcframework.meta"

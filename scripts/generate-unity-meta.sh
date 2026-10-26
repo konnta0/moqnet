@@ -3,10 +3,18 @@
 # Accepts either CI artifact folders (native-linux-x64) or local output (linux-x64).
 set -euo pipefail
 
+hash_path() {
+    if command -v md5sum >/dev/null 2>&1; then
+        printf '%s' "$1" | md5sum | cut -d' ' -f1
+    else
+        printf '%s' "$1" | md5 -q
+    fi
+}
+
 generate_plugin_meta_windows() {
     local file="$1"
     local guid
-    guid="$(printf '%s' "$file" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$file")"
 
     cat > "${file}.meta" << METAEOF
 fileFormatVersion: 2
@@ -48,7 +56,7 @@ METAEOF
 generate_plugin_meta_linux() {
     local file="$1"
     local guid
-    guid="$(printf '%s' "$file" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$file")"
 
     cat > "${file}.meta" << METAEOF
 fileFormatVersion: 2
@@ -90,7 +98,7 @@ METAEOF
 generate_plugin_meta_macos() {
     local file="$1"
     local guid
-    guid="$(printf '%s' "$file" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$file")"
 
     cat > "${file}.meta" << METAEOF
 fileFormatVersion: 2
@@ -131,8 +139,9 @@ METAEOF
 
 generate_plugin_meta_ios() {
     local file="$1"
+    local cpu="${2:-ARM64}"
     local guid
-    guid="$(printf '%s' "$file" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$file")"
 
     cat > "${file}.meta" << METAEOF
 fileFormatVersion: 2
@@ -165,7 +174,7 @@ PluginImporter:
       enabled: 1
       settings:
         AddToEmbeddedBinaries: false
-        CPU: ARM64
+        CPU: ${cpu}
         CompileFlags:
         FrameworkDependencies:
   userData:
@@ -178,7 +187,7 @@ generate_plugin_meta_android() {
     local file="$1"
     local cpu="$2"
     local guid
-    guid="$(printf '%s' "$file" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$file")"
 
     cat > "${file}.meta" << METAEOF
 fileFormatVersion: 2
@@ -220,7 +229,7 @@ METAEOF
 generate_folder_meta() {
     local folder="$1"
     local guid
-    guid="$(printf '%s' "$folder" | md5sum | cut -d' ' -f1)"
+    guid="$(hash_path "$folder")"
     [[ -f "${folder}.meta" ]] && return 0
 
     cat > "${folder}.meta" << METAEOF
@@ -309,8 +318,17 @@ if [[ -n "$OSX_ARM" || -n "$OSX_X64" ]]; then
     fi
 fi
 
+IOS_XCFRAMEWORK_DIR="$(art_dir ios-xcframework)"
 IOS_DIR="$(art_dir ios-arm64)"
-if [[ -n "$IOS_DIR" ]]; then
+if [[ -n "$IOS_XCFRAMEWORK_DIR" && -d "$IOS_XCFRAMEWORK_DIR/moqnet_ffi.xcframework" ]]; then
+    mkdir -p "$UNITY_PKG/Plugins/iOS"
+    generate_folder_meta "$UNITY_PKG/Plugins/iOS"
+    rm -f "$UNITY_PKG/Plugins/iOS/moqnet_ffi.a" "$UNITY_PKG/Plugins/iOS/moqnet_ffi.a.meta"
+    rm -rf "$UNITY_PKG/Plugins/iOS/moqnet_ffi.xcframework"
+    cp -R "$IOS_XCFRAMEWORK_DIR/moqnet_ffi.xcframework" "$UNITY_PKG/Plugins/iOS/"
+    generate_plugin_meta_ios "$UNITY_PKG/Plugins/iOS/moqnet_ffi.xcframework" AnyCPU
+    echo "Copied iOS device + Simulator XCFramework"
+elif [[ -n "$IOS_DIR" ]]; then
     mkdir -p "$UNITY_PKG/Plugins/iOS"
     generate_folder_meta "$UNITY_PKG/Plugins/iOS"
     for src in "$IOS_DIR"/*.a; do

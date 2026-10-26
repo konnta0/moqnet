@@ -57,6 +57,16 @@ jobs:
             rid: ios-arm64
             lib: libmoqnet_ffi.a
             features: audio
+          - os: macos-latest
+            target: aarch64-apple-ios-sim
+            rid: ios-sim-arm64
+            lib: libmoqnet_ffi.a
+            features: audio
+          - os: macos-latest
+            target: x86_64-apple-ios
+            rid: ios-sim-x64
+            lib: libmoqnet_ffi.a
+            features: audio
 
     steps:
       - uses: actions/checkout@v6
@@ -92,9 +102,45 @@ jobs:
           path: native/moqnet-ffi/target/${{ matrix.target }}/release/${{ matrix.lib }}
           if-no-files-found: error
 
+  package-ios:
+    name: Package iOS XCFramework
+    needs: build-native
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download iOS artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: native-ios-*
+          path: native/output
+
+      - name: Create XCFramework
+        run: |
+          set -euo pipefail
+          DEVICE="native/output/native-ios-arm64/libmoqnet_ffi.a"
+          SIM_ARM64="native/output/native-ios-sim-arm64/libmoqnet_ffi.a"
+          SIM_X64="native/output/native-ios-sim-x64/libmoqnet_ffi.a"
+          OUT="native/output/ios-xcframework"
+
+          mkdir -p "$OUT"
+          lipo -create "$SIM_ARM64" "$SIM_X64" -output "$OUT/libmoqnet_ffi-simulator.a"
+          xcodebuild -create-xcframework \
+            -library "$DEVICE" \
+            -library "$OUT/libmoqnet_ffi-simulator.a" \
+            -output "$OUT/moqnet_ffi.xcframework"
+
+      - name: Upload XCFramework
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-ios-xcframework
+          path: native/output/ios-xcframework
+          if-no-files-found: error
+
   publish:
     name: Publish
-    needs: build-native
+    needs: [build-native, package-ios]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

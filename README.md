@@ -18,11 +18,17 @@ C# / Unity bindings for [Media over QUIC](https://github.com/moq-dev/moq) — em
 | **Upstream** | [moq](https://github.com/moq-dev/moq) `0f7cbd765f183dd13dd3b953a47f8c6b61811da0` |
 | **Production use** | Evaluate for your workload; no stability guarantees yet |
 
-**Available:** Client / Session / Origin / Broadcast / raw tracks / media catalog / JSON tracks / Server / audio / video encode helpers. .NET 8+ and Unity 2021.3+ on desktop.
+**Available:** Client / Session / Origin / Broadcast / raw tracks / media catalog / JSON tracks / Server / audio / video encode helpers. .NET 8+ and Unity 2021.3.37f1+.
 
-**Caveats:** Android libraries need a [manual cross-build](docs/mobile-build-guide.md). iOS device binaries ship in the `unity/v*` UPM package. Performance is not fully tuned.
+**Caveats:** Android libraries need a [manual cross-build](docs/mobile-build-guide.md). iOS device and Simulator binaries ship as an XCFramework in the `unity/v*` UPM package. Performance is not fully tuned.
 
 Terms: [LICENSE](LICENSE) (MIT for this repo) · [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) (MIT OR Apache-2.0 for the bundled moq runtime)
+
+## Samples
+
+`samples/` has a localhost relay, a Unity publisher/subscriber, a Blazor Server app, and an authenticated-relay ticket issuer. The browser captures and plays media; native QUIC does not run in WebAssembly.
+
+See [samples/README.md](samples/README.md).
 
 ## Overview
 
@@ -104,7 +110,7 @@ public class MoqExample : MonoBehaviour
 | Linux | x64, ARM64 | Supported (host build) |
 | macOS | x64, ARM64 | Supported (host build) |
 | Android | arm64-v8a, armeabi-v7a, x86_64 | Via [cross-build](docs/mobile-build-guide.md) |
-| iOS | arm64 | Device binary in `unity/v*` UPM; simulators via [cross-build](docs/mobile-build-guide.md) |
+| iOS | Device arm64; Simulator arm64/x64 | XCFramework included in `unity/v*` UPM |
 
 ## Building from Source
 
@@ -137,14 +143,14 @@ Mobile (audio only):
 
 GitHub Actions on `main` / PRs: version check, Linux native build + `dotnet test MoqNet.sln`, UPM metadata validation.
 
-Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.0`):
+Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.1`):
 
 | Tag | Workflow | Output |
 |-----|----------|--------|
-| `v0.3.17.0` | `create-tags.yml` | Creates package tags and runs all publish workflows |
-| `native/v0.3.17.0` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
-| `client/v0.3.17.0` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
-| `unity/v0.3.17.0` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
+| `v0.3.17.1` | `create-tags.yml` | Creates package tags and runs all publish workflows |
+| `native/v0.3.17.1` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
+| `client/v0.3.17.1` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
+| `unity/v0.3.17.1` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
 
 NuGet publishing uses nuget.org Trusted Publishing; no long-lived API key is stored in GitHub. Create two policies with package owner `konnta`, repository owner `konnta0`, repository `moqnet`, no environment, and the **Push new packages and package versions** scope:
 

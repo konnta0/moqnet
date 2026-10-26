@@ -12,4 +12,11 @@
     <Project Path="tests/MoqNet.Native.Tests/MoqNet.Native.Tests.csproj" />
     <Project Path="tests/MoqNet.Client.Tests/MoqNet.Client.Tests.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Auth/MoqNet.Samples.Auth.csproj" />
+    <Project Path="samples/Core/MoqNet.Samples.Core.csproj" />
+    <Project Path="samples/Relay/MoqNet.Samples.Relay.csproj" />
+    <Project Path="samples/Smoke/MoqNet.Samples.Smoke.csproj" />
+    <Project Path="samples/Web/MoqNet.Samples.Web.csproj" />
+  </Folder>
 </Solution>

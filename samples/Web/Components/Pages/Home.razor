@@ -1,0 +1,30 @@
+@page "/"
+@inject Microsoft.Extensions.Options.IOptions<MoqNetOptions> Options
+@inject RelayHostedService Relay
+
+<PageTitle>MoqNet sample</PageTitle>
+
+<h1>Live sample</h1>
+<p class="lede">
+    The browser captures and plays media. The MoQ session runs in this ASP.NET process via
+    <code>MoqNet.Client</code> — native QUIC cannot run inside WebAssembly.
+</p>
+
+<section class="cards">
+    <article>
+        <h2>Relay</h2>
+        <p>Bind <code>@Options.Value.Bind</code></p>
+        <p>Client URL <code>@Options.Value.RelayUrl</code></p>
+        <p>@(string.IsNullOrEmpty(Relay.ListenAddress) ? "Using an external relay." : $"Listening on {Relay.ListenAddress}.")</p>
+    </article>
+    <article>
+        <h2>Publisher</h2>
+        <p>One sender at a time on <code>@SampleProtocol.BroadcastPath</code>.</p>
+        <a class="button" href="/publish">Open publisher</a>
+    </article>
+    <article>
+        <h2>Subscribers</h2>
+        <p>Open this page in multiple tabs, or run the Unity subscriber build more than once.</p>
+        <a class="button" href="/subscribe">Open subscriber</a>
+    </article>
+</section>
