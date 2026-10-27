@@ -71,6 +71,36 @@ jobs:
           test -f "$UNITY_PKG/Runtime/Native/NativeMethods.g.cs"
           echo "OK (NuGet $PACKAGE_VERSION, UPM $UPM_VERSION)"
 
+      - name: Validate committed Unity .meta files
+        run: |
+          set -euo pipefail
+          UNITY_PKG="src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity"
+          SAMPLE_ASSETS="samples/Unity/Assets"
+          ./scripts/ensure-unity-source-meta.sh src/MoqNet.Unity/Assets "$SAMPLE_ASSETS"
+          ./scripts/verify-unity-meta.sh --source-only "$UNITY_PKG" "$SAMPLE_ASSETS/MoqNet.Samples"
+          if [ -n "$(git status --porcelain -- '*.meta')" ]; then
+            echo "ERROR: Unity .meta files are missing from git. Commit the generated files." >&2
+            git status --short -- '*.meta'
+            exit 1
+          fi
+
+      - name: Smoke-test source meta generation
+        run: |
+          set -euo pipefail
+          PKG="$(mktemp -d)"
+          mkdir -p "$PKG/Runtime"
+          echo 'class Demo {}' > "$PKG/Runtime/Demo.cs"
+          echo '{"name":"Demo"}' > "$PKG/Demo.asmdef"
+          ./scripts/ensure-unity-source-meta.sh "$PKG"
+          test -f "$PKG/Runtime.meta"
+          test -f "$PKG/Runtime/Demo.cs.meta"
+          grep -q MonoImporter "$PKG/Runtime/Demo.cs.meta"
+          grep -q AssemblyDefinitionImporter "$PKG/Demo.asmdef.meta"
+          GUID="$(awk '/^guid:/{print $2}' "$PKG/Runtime/Demo.cs.meta")"
+          ./scripts/ensure-unity-source-meta.sh "$PKG"
+          test "$GUID" = "$(awk '/^guid:/{print $2}' "$PKG/Runtime/Demo.cs.meta")"
+          ./scripts/verify-unity-meta.sh "$PKG"
+
       - name: Smoke-test UPM meta generation
         run: |
           set -euo pipefail

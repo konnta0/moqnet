@@ -187,9 +187,12 @@ jobs:
           UPM_VERSION="${{ steps.version.outputs.upm }}"
           UNITY_PKG="src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity"
 
-          chmod +x scripts/generate-unity-meta.sh scripts/bundle-upm-native-source.sh scripts/upm-version.sh
+          chmod +x scripts/generate-unity-meta.sh scripts/bundle-upm-native-source.sh scripts/upm-version.sh \
+            scripts/ensure-unity-source-meta.sh scripts/verify-unity-meta.sh
+          ./scripts/ensure-unity-source-meta.sh src/MoqNet.Unity/Assets
           ./scripts/generate-unity-meta.sh "$UNITY_PKG" native/output native
           ./scripts/bundle-upm-native-source.sh "$UNITY_PKG"
+          ./scripts/verify-unity-meta.sh "$UNITY_PKG"
 
           jq --arg v "$UPM_VERSION" '.version = $v' "$UNITY_PKG/package.json" > tmp.json
           mv tmp.json "$UNITY_PKG/package.json"
