@@ -504,8 +504,20 @@ public sealed class GroupConsumer : IDisposable
     public ulong Sequence => _native.Sequence;
 
     /// <summary>Blocks until the next frame, or returns null when the group ends.</summary>
-    public Task<MoqFrame?> ReadFrameAsync(CancellationToken cancellationToken = default) =>
-        Task.Run(() => _native.ReadFrame(), cancellationToken);
+    public async Task<MoqFrame?> ReadFrameAsync(CancellationToken cancellationToken = default)
+    {
+        using var registration = cancellationToken.Register(static state =>
+        {
+            try
+            {
+                ((Native.GroupConsumer)state!).Cancel();
+            }
+            catch (MoqException)
+            {
+            }
+        }, _native);
+        return await Task.Run(() => _native.ReadFrame(), cancellationToken).ConfigureAwait(false);
+    }
 
     /// <inheritdoc />
     public void Dispose() => _native.Dispose();

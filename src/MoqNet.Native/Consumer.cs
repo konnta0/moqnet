@@ -321,6 +321,12 @@ namespace MoqNet.Native
         /// <summary>Group sequence number.</summary>
         public unsafe ulong Sequence => NativeMethods.moq_group_consumer_sequence((void*)Handle);
 
+        /// <summary>Cancels a blocking <see cref="ReadFrame"/> call.</summary>
+        public unsafe void Cancel()
+        {
+            Ffi.Check(NativeMethods.moq_group_consumer_cancel((void*)Handle), "Cancel");
+        }
+
         /// <summary>Blocks until the next frame, or returns null when the group ends.</summary>
         public unsafe MoqFrame? ReadFrame()
         {
@@ -335,6 +341,12 @@ namespace MoqNet.Native
             }
 
             return new MoqFrame(Ffi.ClaimBuffer(payload, len), timestamp);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_group_consumer_cancel(handle);
         }
 
         /// <inheritdoc />

@@ -143,14 +143,14 @@ Mobile (audio only):
 
 GitHub Actions on `main` / PRs: version check, Linux native build + `dotnet test MoqNet.sln`, UPM metadata validation.
 
-Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.3`):
+Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.4`):
 
 | Tag | Workflow | Output |
 |-----|----------|--------|
-| `v0.3.17.3` | `create-tags.yml` | Creates package tags and runs all publish workflows |
-| `native/v0.3.17.3` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
-| `client/v0.3.17.3` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
-| `unity/v0.3.17.3` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
+| `v0.3.17.4` | `create-tags.yml` | Creates package tags and runs all publish workflows |
+| `native/v0.3.17.4` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
+| `client/v0.3.17.4` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
+| `unity/v0.3.17.4` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
 
 NuGet publishing uses nuget.org Trusted Publishing; no long-lived API key is stored in GitHub. Create two policies with package owner `konnta`, repository owner `konnta0`, repository `moqnet`, no environment, and the **Push new packages and package versions** scope:
 

@@ -3,7 +3,7 @@
     <!-- Upstream moq-ffi crate version embedded via moq-net / moq-native -->
     <MoqFfiVersion>0.3.17</MoqFfiVersion>
     <!-- NuGet package version: {MoqFfiVersion}.{dotnet-patch} -->
-    <Version>0.3.17.3</Version>
+    <Version>0.3.17.4</Version>
     <!-- UPM package version: {MoqFfiVersion}-native.{dotnet-patch} -->
   </PropertyGroup>
 </Project>

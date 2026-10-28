@@ -512,6 +512,17 @@ pub unsafe extern "C" fn moq_group_consumer_free(handle: *mut c_void) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn moq_group_consumer_cancel(handle: *mut c_void) -> i32 {
+    clear_error();
+    let group = match as_ref::<GroupConsumer>(handle) {
+        Ok(g) => g,
+        Err(e) => return e,
+    };
+    cancel::set(&group.cancelled);
+    MOQ_OK
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn moq_group_consumer_sequence(handle: *const c_void) -> u64 {
     as_ref::<GroupConsumer>(handle).map(|g| g.sequence).unwrap_or(0)
 }
@@ -535,21 +546,24 @@ pub unsafe extern "C" fn moq_group_consumer_read_frame(
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.read_frame()) {
-        Ok(Some(frame)) => {
-            let ts = match frame.timestamp.as_micros().try_into() {
-                Ok(v) => v,
-                Err(_) => return fail("timestamp overflow"),
-            };
-            unsafe {
-                if !out_timestamp_us.is_null() {
-                    *out_timestamp_us = ts;
+    match runtime::block_on(cancel::or_set(&group.cancelled, inner.read_frame())) {
+        None => fail("cancelled"),
+        Some(result) => match result {
+            Ok(Some(frame)) => {
+                let ts = match frame.timestamp.as_micros().try_into() {
+                    Ok(v) => v,
+                    Err(_) => return fail("timestamp overflow"),
+                };
+                unsafe {
+                    if !out_timestamp_us.is_null() {
+                        *out_timestamp_us = ts;
+                    }
                 }
+                write_bytes(out_payload, out_len, frame.payload.to_vec())
             }
-            write_bytes(out_payload, out_len, frame.payload.to_vec())
-        }
-        Ok(None) => MOQ_NONE,
-        Err(err) => map_err(err),
+            Ok(None) => MOQ_NONE,
+            Err(err) => map_err(err),
+        },
     }
 }
 

@@ -342,6 +342,9 @@ namespace MoqNet.Native.FFI
         [DllImport(__DllName, EntryPoint = "moq_group_consumer_free", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void moq_group_consumer_free(void* handle);
 
+        [DllImport(__DllName, EntryPoint = "moq_group_consumer_cancel", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern int moq_group_consumer_cancel(void* handle);
+
         [DllImport(__DllName, EntryPoint = "moq_group_consumer_sequence", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern ulong moq_group_consumer_sequence(void* handle);
 
