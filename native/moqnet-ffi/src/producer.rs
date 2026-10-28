@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use moq_mux::catalog::hang::Extra;
 
+use crate::cancel;
 use crate::consumer::{BroadcastConsumer, GroupConsumer, TrackConsumer};
 use crate::error::{closed, map_err};
 use crate::ffi::{
@@ -21,7 +22,7 @@ pub struct BroadcastProducer {
 
 pub struct BroadcastDynamic {
     inner: Mutex<moq_net::broadcast::Dynamic>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct TrackRequest {
@@ -146,7 +147,7 @@ pub unsafe extern "C" fn moq_broadcast_producer_dynamic(handle: *const c_void, o
     match producer.with_state(|state| {
         Ok(into_raw(BroadcastDynamic {
             inner: Mutex::new(state.broadcast.dynamic()),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }))
     }) {
         Ok(ptr) => write_out(out_dynamic, ptr),
@@ -394,9 +395,7 @@ pub unsafe extern "C" fn moq_broadcast_dynamic_cancel(handle: *mut c_void) -> i3
         Ok(d) => d,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = dynamic.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&dynamic.cancelled);
     MOQ_OK
 }
 
@@ -410,14 +409,18 @@ pub unsafe extern "C" fn moq_broadcast_dynamic_requested_track(
         Ok(d) => d,
         Err(e) => return e,
     };
-    if dynamic.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&dynamic.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match dynamic.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.requested_track()) {
+    let next = match runtime::block_on(cancel::or_set(&dynamic.cancelled, inner.requested_track())) {
+        None => return fail("cancelled"),
+        Some(value) => value,
+    };
+    match next {
         Ok(request) => write_out(
             out_request,
             into_raw(TrackRequest {

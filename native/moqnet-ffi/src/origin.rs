@@ -1,6 +1,7 @@
 use std::os::raw::{c_char, c_void};
 use std::sync::Mutex;
 
+use crate::cancel;
 use crate::consumer::BroadcastConsumer;
 use crate::error::{closed, map_err};
 use crate::ffi::{
@@ -21,16 +22,17 @@ pub struct OriginConsumer {
 
 pub struct Announced {
     inner: Mutex<moq_net::announce::Consumer>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct AnnouncedBroadcast {
     inner: Mutex<moq_net::announce::Consumer>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct OriginDynamic {
     inner: Mutex<Option<moq_net::origin::Dynamic>>,
+    cancelled: cancel::Flag,
 }
 
 pub struct BroadcastRequest {
@@ -144,6 +146,7 @@ pub unsafe extern "C" fn moq_origin_producer_dynamic(handle: *const c_void, out_
         out_dynamic,
         into_raw(OriginDynamic {
             inner: Mutex::new(Some(origin.inner.dynamic())),
+            cancelled: cancel::new(),
         }),
     )
 }
@@ -177,7 +180,7 @@ pub unsafe extern "C" fn moq_origin_consumer_announced(
         out_announced,
         into_raw(Announced {
             inner: Mutex::new(scoped.announced()),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }),
     )
 }
@@ -206,7 +209,7 @@ pub unsafe extern "C" fn moq_origin_consumer_announced_broadcast(
         out_wait,
         into_raw(AnnouncedBroadcast {
             inner: Mutex::new(scoped.announced()),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }),
     )
 }
@@ -245,9 +248,7 @@ pub unsafe extern "C" fn moq_announced_cancel(handle: *mut c_void) -> i32 {
         Ok(a) => a,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = announced.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&announced.cancelled);
     MOQ_OK
 }
 
@@ -262,7 +263,7 @@ pub unsafe extern "C" fn moq_announced_next(
         Ok(a) => a,
         Err(e) => return e,
     };
-    if announced.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&announced.cancelled) {
         return fail("cancelled");
     }
 
@@ -272,11 +273,14 @@ pub unsafe extern "C" fn moq_announced_next(
                 Ok(g) => g,
                 Err(_) => return fail("lock poisoned"),
             };
-            runtime::block_on(inner.next())
+            match runtime::block_on(cancel::or_set(&announced.cancelled, inner.next())) {
+                None => return fail("cancelled"),
+                Some(value) => value,
+            }
         };
         match next {
             Some(moq_net::announce::Update { path, broadcast }) => {
-                if announced.cancelled.lock().map(|f| *f).unwrap_or(false) {
+                if cancel::is_set(&announced.cancelled) {
                     return fail("cancelled");
                 }
                 let Some(broadcast) = broadcast else {
@@ -309,9 +313,7 @@ pub unsafe extern "C" fn moq_announced_broadcast_cancel(handle: *mut c_void) -> 
         Ok(a) => a,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = wait.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&wait.cancelled);
     MOQ_OK
 }
 
@@ -326,7 +328,7 @@ pub unsafe extern "C" fn moq_announced_broadcast_available(
         Err(e) => return e,
     };
     loop {
-        if wait.cancelled.lock().map(|f| *f).unwrap_or(false) {
+        if cancel::is_set(&wait.cancelled) {
             return fail("cancelled");
         }
         let next = {
@@ -334,7 +336,10 @@ pub unsafe extern "C" fn moq_announced_broadcast_available(
                 Ok(g) => g,
                 Err(_) => return fail("lock poisoned"),
             };
-            runtime::block_on(inner.next())
+            match runtime::block_on(cancel::or_set(&wait.cancelled, inner.next())) {
+                None => return fail("cancelled"),
+                Some(value) => value,
+            }
         };
         match next {
             Some(moq_net::announce::Update { broadcast, .. }) => {
@@ -359,7 +364,8 @@ pub unsafe extern "C" fn moq_origin_dynamic_cancel(handle: *mut c_void) -> i32 {
         Ok(d) => d,
         Err(e) => return e,
     };
-    if let Ok(mut inner) = dynamic.inner.lock() {
+    cancel::set(&dynamic.cancelled);
+    if let Ok(mut inner) = dynamic.inner.try_lock() {
         *inner = None;
     }
     MOQ_OK
@@ -375,21 +381,31 @@ pub unsafe extern "C" fn moq_origin_dynamic_requested_broadcast(
         Ok(d) => d,
         Err(e) => return e,
     };
+    if cancel::is_set(&dynamic.cancelled) {
+        return closed();
+    }
     let mut slot = match dynamic.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    let Some(inner) = slot.as_mut() else {
-        return closed();
+    let next = {
+        let Some(inner) = slot.as_mut() else {
+            return closed();
+        };
+        runtime::block_on(cancel::or_set(&dynamic.cancelled, inner.requested_broadcast()))
     };
-    match runtime::block_on(inner.requested_broadcast()) {
-        Ok(request) => write_out(
+    match next {
+        None => {
+            *slot = None;
+            closed()
+        }
+        Some(Ok(request)) => write_out(
             out_request,
             into_raw(BroadcastRequest {
                 inner: Mutex::new(Some(request)),
             }),
         ),
-        Err(err) => map_err(err),
+        Some(Err(err)) => map_err(err),
     }
 }
 

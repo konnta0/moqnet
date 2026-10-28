@@ -147,6 +147,7 @@ namespace MoqNet.Native
         /// </summary>
         public unsafe bool Next(out string path, out BroadcastConsumer broadcast)
         {
+            using var call = EnterCall();
             byte* pathPtr = null;
             void* broadcastPtr = null;
             var status = NativeMethods.moq_announced_next((void*)Handle, &pathPtr, &broadcastPtr);
@@ -160,6 +161,12 @@ namespace MoqNet.Native
             path = Ffi.ClaimString(pathPtr) ?? string.Empty;
             broadcast = new BroadcastConsumer((IntPtr)broadcastPtr);
             return true;
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_announced_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -188,9 +195,16 @@ namespace MoqNet.Native
         /// <summary>Blocks until the broadcast is announced.</summary>
         public unsafe BroadcastConsumer Available()
         {
+            using var call = EnterCall();
             void* broadcast = null;
             Ffi.Check(NativeMethods.moq_announced_broadcast_available((void*)Handle, &broadcast), "Available");
             return new BroadcastConsumer((IntPtr)broadcast);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_announced_broadcast_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -219,9 +233,16 @@ namespace MoqNet.Native
         /// <summary>Blocks until a subscriber requests a broadcast.</summary>
         public unsafe BroadcastRequest RequestedBroadcast()
         {
+            using var call = EnterCall();
             void* request = null;
             Ffi.Check(NativeMethods.moq_origin_dynamic_requested_broadcast((void*)Handle, &request), "RequestedBroadcast");
             return new BroadcastRequest((IntPtr)request);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_origin_dynamic_cancel(handle);
         }
 
         /// <inheritdoc />

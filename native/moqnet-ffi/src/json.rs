@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use serde_json::Value;
 
+use crate::cancel;
 use crate::consumer::BroadcastConsumer;
 use crate::error::{closed, map_err};
 use crate::ffi::{as_ref, clear_error, drop_raw, fail, into_raw, read_cstr, to_cstring, write_out, MOQ_NONE, MOQ_OK};
@@ -19,12 +20,12 @@ pub struct JsonStreamProducer {
 
 pub struct JsonSnapshotConsumer {
     inner: Mutex<moq_json::snapshot::Consumer<Value>>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct JsonStreamConsumer {
     inner: Mutex<moq_json::stream::Consumer<Value>>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 #[no_mangle]
@@ -212,7 +213,7 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_json_snapshot(
             out_consumer,
             into_raw(JsonSnapshotConsumer {
                 inner: Mutex::new(moq_json::snapshot::Consumer::<Value>::new(track, config)),
-                cancelled: Mutex::new(false),
+                cancelled: cancel::new(),
             }),
         ),
         Err(err) => map_err(err),
@@ -242,7 +243,7 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_json_stream(
             out_consumer,
             into_raw(JsonStreamConsumer {
                 inner: Mutex::new(moq_json::stream::Consumer::<Value>::new(track, config)),
-                cancelled: Mutex::new(false),
+                cancelled: cancel::new(),
             }),
         ),
         Err(err) => map_err(err),
@@ -261,9 +262,7 @@ pub unsafe extern "C" fn moq_json_snapshot_consumer_cancel(handle: *mut c_void) 
         Ok(c) => c,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = consumer.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&consumer.cancelled);
     MOQ_OK
 }
 
@@ -274,14 +273,18 @@ pub unsafe extern "C" fn moq_json_snapshot_consumer_next(handle: *mut c_void, ou
         Ok(c) => c,
         Err(e) => return e,
     };
-    if consumer.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&consumer.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match consumer.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.next()) {
+    let next = match runtime::block_on(cancel::or_set(&consumer.cancelled, inner.next())) {
+        None => return fail("cancelled"),
+        Some(value) => value,
+    };
+    match next {
         Ok(Some(value)) => match serde_json::to_string(&value) {
             Ok(s) => match to_cstring(s) {
                 Ok(ptr) => write_out(out_json, ptr),
@@ -306,9 +309,7 @@ pub unsafe extern "C" fn moq_json_stream_consumer_cancel(handle: *mut c_void) ->
         Ok(c) => c,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = consumer.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&consumer.cancelled);
     MOQ_OK
 }
 
@@ -319,14 +320,18 @@ pub unsafe extern "C" fn moq_json_stream_consumer_next(handle: *mut c_void, out_
         Ok(c) => c,
         Err(e) => return e,
     };
-    if consumer.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&consumer.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match consumer.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.next()) {
+    let next = match runtime::block_on(cancel::or_set(&consumer.cancelled, inner.next())) {
+        None => return fail("cancelled"),
+        Some(value) => value,
+    };
+    match next {
         Ok(Some(value)) => match serde_json::to_string(&value) {
             Ok(s) => match to_cstring(s) {
                 Ok(ptr) => write_out(out_json, ptr),

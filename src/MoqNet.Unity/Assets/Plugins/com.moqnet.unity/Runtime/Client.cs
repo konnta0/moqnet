@@ -77,7 +77,7 @@ namespace MoqNet.Unity
                 }
             }))
             {
-                var session = await UniTask.RunOnThreadPool(() => _native.Connect(url), cancellationToken: cancellationToken);
+                var session = await NativeAsync.Call(() => _native.Connect(url), cancellationToken);
                 return new Session(session);
             }
         }
@@ -165,6 +165,35 @@ namespace MoqNet.Unity
             {
                 throw new ObjectDisposedException(nameof(Session));
             }
+        }
+    }
+
+    /// <summary>
+    /// Runs a blocking native call that returns an owned handle on the UniTask thread pool.
+    /// The token is not passed to <c>RunOnThreadPool</c>: that would drop the returned handle
+    /// if the token fires after the delegate completed.
+    /// </summary>
+    internal static class NativeAsync
+    {
+        /// <summary>
+        /// Invokes <paramref name="call"/> on the thread pool and disposes the result if the token is cancelled.
+        /// </summary>
+        /// <typeparam name="T">Owned native handle type.</typeparam>
+        /// <param name="call">Blocking native call that returns an owned handle.</param>
+        /// <param name="cancellationToken">Checked before the call and after it returns.</param>
+        /// <returns>The handle when the call completes without cancellation.</returns>
+        internal static async UniTask<T> Call<T>(Func<T> call, CancellationToken cancellationToken)
+            where T : IDisposable
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await UniTask.RunOnThreadPool(call);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                result.Dispose();
+                throw new OperationCanceledException(cancellationToken);
+            }
+
+            return result;
         }
     }
 }

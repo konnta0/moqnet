@@ -43,9 +43,33 @@ public sealed class Server : IDisposable
     public async Task<Request?> AcceptAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        var request = await Task.Run(() => _native.Accept(), cancellationToken).ConfigureAwait(false);
-        return request == null ? null : new Request(request);
+        using (cancellationToken.Register(static state =>
+        {
+            try
+            {
+                ((Native.Server)state!).Close();
+            }
+            catch (MoqException)
+            {
+            }
+        }, _native))
+        {
+            var request = await Task.Run(() => _native.Accept()).ConfigureAwait(false);
+            if (cancellationToken.IsCancellationRequested)
+            {
+                request?.Dispose();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            return request == null ? null : new Request(request);
+        }
     }
+
+    /// <summary>
+    /// Stops the server: a pending or later <see cref="AcceptAsync"/> returns null and the listener is closed.
+    /// Does not block. <see cref="Dispose"/> also does this on an accept that is pending.
+    /// </summary>
+    public void Close() => _native.Close();
 
     /// <summary>Returns served certificate fingerprints as JSON.</summary>
     public string CertFingerprintsJson() => _native.CertFingerprintsJson();
@@ -59,6 +83,14 @@ public sealed class Server : IDisposable
         }
 
         _disposed = true;
+        try
+        {
+            _native.Close();
+        }
+        catch (MoqException)
+        {
+        }
+
         _native.Dispose();
     }
 }

@@ -1,6 +1,7 @@
 //! C ABI for MoQ, generated into C# with csbindgen.
 
 mod audio;
+mod cancel;
 mod client;
 mod consumer;
 mod error;

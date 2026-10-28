@@ -1,6 +1,6 @@
 {
   "name": "com.moqnet.unity",
-  "version": "0.3.17-native.2",
+  "version": "0.3.17-native.3",
   "displayName": "MoqNet for Unity",
   "license": "MIT",
   "description": "Community-maintained MoQ bindings for Unity with UniTask support. Transport is QUIC/WebTransport inside the native library.",

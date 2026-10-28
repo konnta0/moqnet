@@ -11,6 +11,7 @@ mod imp {
     use std::sync::Mutex;
     use std::time::Duration;
 
+    use crate::cancel;
     use crate::consumer::BroadcastConsumer;
     use crate::error::{closed, map_err};
     use crate::ffi::{as_ref, clear_error, drop_raw, fail, into_raw, read_cstr, to_cstring, write_out, MOQ_NONE, MOQ_OK};
@@ -23,7 +24,7 @@ mod imp {
 
     pub struct AudioConsumer {
         inner: Mutex<moq_audio::decode::Consumer>,
-        cancelled: Mutex<bool>,
+        cancelled: cancel::Flag,
     }
 
     fn format_from_u8(v: u8) -> Result<moq_audio::Format, i32> {
@@ -228,7 +229,7 @@ mod imp {
                 out_consumer,
                 into_raw(AudioConsumer {
                     inner: Mutex::new(inner),
-                    cancelled: Mutex::new(false),
+                    cancelled: cancel::new(),
                 }),
             ),
             Err(err) => map_err(err),
@@ -245,9 +246,7 @@ mod imp {
             Ok(c) => c,
             Err(e) => return e,
         };
-        if let Ok(mut flag) = consumer.cancelled.lock() {
-            *flag = true;
-        }
+        cancel::set(&consumer.cancelled);
         MOQ_OK
     }
 
@@ -262,14 +261,18 @@ mod imp {
             Ok(c) => c,
             Err(e) => return e,
         };
-        if consumer.cancelled.lock().map(|f| *f).unwrap_or(false) {
+        if cancel::is_set(&consumer.cancelled) {
             return fail("cancelled");
         }
         let mut inner = match consumer.inner.lock() {
             Ok(g) => g,
             Err(_) => return fail("lock poisoned"),
         };
-        match runtime::block_on(inner.read()) {
+        let next = match runtime::block_on(cancel::or_set(&consumer.cancelled, inner.read())) {
+            None => return fail("cancelled"),
+            Some(value) => value,
+        };
+        match next {
             Ok(Some(frame)) => {
                 let ts = u64::try_from(frame.timestamp.as_micros()).unwrap_or(u64::MAX);
                 if !out_timestamp_us.is_null() {

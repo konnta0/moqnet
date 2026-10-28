@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use bytes::Buf;
 
+use crate::cancel;
 use crate::error::map_err;
 use crate::ffi::{as_ref, clear_error, drop_raw, fail, into_raw, read_cstr, to_cstring, write_out, MOQ_NONE, MOQ_OK};
 use crate::runtime;
@@ -13,35 +14,35 @@ pub struct BroadcastConsumer {
 
 pub struct RouteWatch {
     inner: Mutex<moq_net::broadcast::Consumer>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct CatalogConsumer {
     inner: Mutex<moq_mux::catalog::hang::Consumer<moq_mux::catalog::hang::Extra>>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct TrackConsumer {
     inner: Mutex<moq_net::track::Subscriber>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct GroupConsumer {
     sequence: u64,
     inner: Mutex<moq_net::group::Consumer>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 pub struct MediaConsumer {
     inner: Mutex<moq_mux::container::Consumer<moq_mux::catalog::hang::Container>>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 #[allow(dead_code)]
 pub struct MediaGroupConsumer {
     sequence: u64,
     inner: Mutex<moq_mux::container::GroupConsumer<moq_mux::catalog::hang::Container>>,
-    cancelled: Mutex<bool>,
+    cancelled: cancel::Flag,
 }
 
 impl BroadcastConsumer {
@@ -58,7 +59,7 @@ impl TrackConsumer {
     pub(crate) fn new(track: moq_net::track::Subscriber) -> Self {
         Self {
             inner: Mutex::new(track),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }
     }
 }
@@ -68,7 +69,7 @@ impl GroupConsumer {
         Self {
             sequence: group.sequence,
             inner: Mutex::new(group),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }
     }
 }
@@ -192,7 +193,7 @@ pub unsafe extern "C" fn moq_broadcast_consumer_route_updates(handle: *const c_v
         out_watch,
         into_raw(RouteWatch {
             inner: Mutex::new(consumer.inner.clone()),
-            cancelled: Mutex::new(false),
+            cancelled: cancel::new(),
         }),
     )
 }
@@ -219,7 +220,7 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_catalog(
             out_catalog,
             into_raw(CatalogConsumer {
                 inner: Mutex::new(catalog),
-                cancelled: Mutex::new(false),
+                cancelled: cancel::new(),
             }),
         ),
         Err(err) => map_err(err),
@@ -294,7 +295,7 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_media(
                 out_media,
                 into_raw(MediaConsumer {
                     inner: Mutex::new(consumer),
-                    cancelled: Mutex::new(false),
+                    cancelled: cancel::new(),
                 }),
             )
         }
@@ -344,9 +345,7 @@ pub unsafe extern "C" fn moq_route_watch_cancel(handle: *mut c_void) -> i32 {
         Ok(w) => w,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = watch.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&watch.cancelled);
     MOQ_OK
 }
 
@@ -357,14 +356,16 @@ pub unsafe extern "C" fn moq_route_watch_next(handle: *mut c_void, out_json: *mu
         Ok(w) => w,
         Err(e) => return e,
     };
-    if watch.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&watch.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match watch.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.route_changed()) {
+    match runtime::block_on(cancel::or_set(&watch.cancelled, inner.route_changed())) {
+        None => return fail("cancelled"),
+        Some(result) => match result {
         Ok(route) => {
             let json = serde_json::json!({
                 "hops": route.hops.iter().map(|o| o.id()).collect::<Vec<_>>(),
@@ -378,6 +379,7 @@ pub unsafe extern "C" fn moq_route_watch_next(handle: *mut c_void, out_json: *mu
         }
         Err(moq_net::Error::Dropped) => MOQ_NONE,
         Err(err) => map_err(err),
+        }
     }
 }
 
@@ -393,9 +395,7 @@ pub unsafe extern "C" fn moq_catalog_consumer_cancel(handle: *mut c_void) -> i32
         Ok(c) => c,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = catalog.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&catalog.cancelled);
     MOQ_OK
 }
 
@@ -406,20 +406,23 @@ pub unsafe extern "C" fn moq_catalog_consumer_next(handle: *mut c_void, out_json
         Ok(c) => c,
         Err(e) => return e,
     };
-    if catalog.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&catalog.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match catalog.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.next()) {
+    match runtime::block_on(cancel::or_set(&catalog.cancelled, inner.next())) {
+        None => return fail("cancelled"),
+        Some(result) => match result {
         Ok(Some(next)) => match to_cstring(catalog_json(&next)) {
             Ok(ptr) => write_out(out_json, ptr),
             Err(e) => e,
         },
         Ok(None) => MOQ_NONE,
         Err(err) => map_err(err),
+        }
     }
 }
 
@@ -435,9 +438,7 @@ pub unsafe extern "C" fn moq_track_consumer_cancel(handle: *mut c_void) -> i32 {
         Ok(t) => t,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = track.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&track.cancelled);
     MOQ_OK
 }
 
@@ -453,14 +454,16 @@ pub unsafe extern "C" fn moq_track_consumer_read_frame(
         Ok(t) => t,
         Err(e) => return e,
     };
-    if track.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&track.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match track.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.read_frame()) {
+    match runtime::block_on(cancel::or_set(&track.cancelled, inner.read_frame())) {
+        None => fail("cancelled"),
+        Some(result) => match result {
         Ok(Some(frame)) => {
             let ts = match frame.timestamp.as_micros().try_into() {
                 Ok(v) => v,
@@ -475,6 +478,7 @@ pub unsafe extern "C" fn moq_track_consumer_read_frame(
         }
         Ok(None) => MOQ_NONE,
         Err(err) => map_err(err),
+        }
     }
 }
 
@@ -485,17 +489,20 @@ pub unsafe extern "C" fn moq_track_consumer_next_group(handle: *mut c_void, out_
         Ok(t) => t,
         Err(e) => return e,
     };
-    if track.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&track.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match track.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.next_group()) {
+    match runtime::block_on(cancel::or_set(&track.cancelled, inner.next_group())) {
+        None => fail("cancelled"),
+        Some(result) => match result {
         Ok(Some(group)) => write_out(out_group, into_raw(GroupConsumer::new(group))),
         Ok(None) => MOQ_NONE,
         Err(err) => map_err(err),
+        }
     }
 }
 
@@ -521,7 +528,7 @@ pub unsafe extern "C" fn moq_group_consumer_read_frame(
         Ok(g) => g,
         Err(e) => return e,
     };
-    if group.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&group.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match group.inner.lock() {
@@ -558,9 +565,7 @@ pub unsafe extern "C" fn moq_media_consumer_cancel(handle: *mut c_void) -> i32 {
         Ok(m) => m,
         Err(e) => return e,
     };
-    if let Ok(mut flag) = media.cancelled.lock() {
-        *flag = true;
-    }
+    cancel::set(&media.cancelled);
     MOQ_OK
 }
 
@@ -577,14 +582,16 @@ pub unsafe extern "C" fn moq_media_consumer_next(
         Ok(m) => m,
         Err(e) => return e,
     };
-    if media.cancelled.lock().map(|f| *f).unwrap_or(false) {
+    if cancel::is_set(&media.cancelled) {
         return fail("cancelled");
     }
     let mut inner = match media.inner.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(inner.read()) {
+    match runtime::block_on(cancel::or_set(&media.cancelled, inner.read())) {
+        None => fail("cancelled"),
+        Some(result) => match result {
         Ok(Some(mut frame)) => {
             let ts = match frame.timestamp.as_micros().try_into() {
                 Ok(v) => v,
@@ -603,5 +610,6 @@ pub unsafe extern "C" fn moq_media_consumer_next(
         }
         Ok(None) => MOQ_NONE,
         Err(err) => map_err(err),
+        }
     }
 }

@@ -411,6 +411,14 @@ namespace MoqNet.Native.FFI
         [DllImport(__DllName, EntryPoint = "moq_server_free", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern void moq_server_free(void* handle);
 
+        /// <summary>
+        ///  Stops the server: a pending or later accept() returns none (as when the listener ends)
+        ///  and the listener is closed. Does not block: if accept() is waiting it holds the state
+        ///  lock, so close only sets the flag and accept itself drops the listener when it wakes up.
+        /// </summary>
+        [DllImport(__DllName, EntryPoint = "moq_server_close", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+        internal static extern int moq_server_close(void* handle);
+
         [DllImport(__DllName, EntryPoint = "moq_server_set_bind", CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
         internal static extern int moq_server_set_bind(void* handle, byte* addr);
 

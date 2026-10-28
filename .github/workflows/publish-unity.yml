@@ -203,7 +203,8 @@ jobs:
       - name: Package UPM tgz
         run: |
           mkdir -p packages
-          tar -C src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity -czf \
+          tar -C src/MoqNet.Unity/Assets/Plugins/com.moqnet.unity \
+            --exclude='.gitkeep' --exclude='.gitkeep.meta' -czf \
             "packages/com.moqnet.unity-${{ steps.version.outputs.upm }}.tgz" .
 
       - name: Upload UPM package

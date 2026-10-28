@@ -52,7 +52,10 @@ public sealed class LiveSubscriberSession : IAsyncDisposable
             }
 
             session = await client.ConnectAsync(url, cancellationToken).ConfigureAwait(false);
-            broadcast = await session.Consumer.RequestBroadcastAsync(SampleProtocol.BroadcastPath, cancellationToken).ConfigureAwait(false);
+            using (var announced = session.Consumer.AnnouncedBroadcast(SampleProtocol.BroadcastPath))
+            {
+                broadcast = await announced.AvailableAsync(cancellationToken).ConfigureAwait(false);
+            }
             audio = await broadcast.SubscribeAudioAsync(
                 SampleProtocol.AudioTrack,
                 SampleProtocol.AudioCodec,
@@ -94,6 +97,8 @@ public sealed class LiveSubscriberSession : IAsyncDisposable
             await _loopCts.CancelAsync().ConfigureAwait(false);
         }
 
+        await AwaitLoopAsync(_audioLoop).ConfigureAwait(false);
+        await AwaitLoopAsync(_previewLoop).ConfigureAwait(false);
         _broadcast?.Dispose();
         if (_session is not null)
         {
@@ -107,8 +112,6 @@ public sealed class LiveSubscriberSession : IAsyncDisposable
         }
 
         _client?.Dispose();
-        await AwaitLoopAsync(_audioLoop).ConfigureAwait(false);
-        await AwaitLoopAsync(_previewLoop).ConfigureAwait(false);
         _loopCts?.Dispose();
         _broadcast = null;
         _session = null;

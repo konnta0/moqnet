@@ -71,6 +71,7 @@ namespace MoqNet.Native
         /// <summary>Binds the server and returns the local address. Blocks while initializing TLS.</summary>
         public unsafe string Listen()
         {
+            using var call = EnterCall();
             byte* addr = null;
             Ffi.Check(NativeMethods.moq_server_listen((void*)Handle, &addr), "Listen");
             return Ffi.ClaimString(addr) ?? string.Empty;
@@ -79,6 +80,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next connection request, or returns null when the listener ends.</summary>
         public unsafe Request? Accept()
         {
+            using var call = EnterCall();
             void* request = null;
             var status = NativeMethods.moq_server_accept((void*)Handle, &request);
             if (Ffi.IsNone(status, "Accept"))
@@ -89,12 +91,27 @@ namespace MoqNet.Native
             return new Request((IntPtr)request);
         }
 
+        /// <summary>
+        /// Stops the server: a pending or later <see cref="Accept"/> returns null and the listener is closed.
+        /// Does not block. If accept is waiting it holds the state lock, so close only wakes it.
+        /// </summary>
+        public unsafe void Close()
+        {
+            Ffi.Check(NativeMethods.moq_server_close((void*)Handle), "Close");
+        }
+
         /// <summary>Returns served certificate fingerprints as JSON.</summary>
         public unsafe string CertFingerprintsJson()
         {
             byte* json = null;
             Ffi.Check(NativeMethods.moq_server_cert_fingerprints((void*)Handle, &json), "CertFingerprintsJson");
             return Ffi.ClaimString(json) ?? "[]";
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_server_close(handle);
         }
 
         /// <inheritdoc />
@@ -161,6 +178,7 @@ namespace MoqNet.Native
         /// <summary>Accepts the request and returns a session. Blocks on handshake.</summary>
         public unsafe Session Accept()
         {
+            using var call = EnterCall();
             void* session = null;
             Ffi.Check(NativeMethods.moq_request_accept((void*)Handle, &session), "Accept");
             return new Session((IntPtr)session);

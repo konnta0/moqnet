@@ -35,6 +35,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to the hang catalog. Blocks until the catalog track is ready.</summary>
         public unsafe CatalogConsumer SubscribeCatalog()
         {
+            using var call = EnterCall();
             void* catalog = null;
             Ffi.Check(NativeMethods.moq_broadcast_consumer_subscribe_catalog((void*)Handle, &catalog), "SubscribeCatalog");
             return new CatalogConsumer((IntPtr)catalog);
@@ -43,6 +44,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to a raw track. Blocks until the subscription is established.</summary>
         public unsafe TrackConsumer SubscribeTrack(string name, SubscriptionOptions? options = null)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             var opts = options ?? new SubscriptionOptions();
             using var utf = Utf8String.Create(name);
@@ -64,6 +66,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to encoded media. Treat init bytes as an untrusted bitstream.</summary>
         public unsafe MediaConsumer SubscribeMedia(string name, MediaContainerKind kind, byte[]? init = null, SubscriptionOptions? options = null)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             var opts = options ?? new SubscriptionOptions();
             using var utf = Utf8String.Create(name);
@@ -108,6 +111,7 @@ namespace MoqNet.Native
         /// <summary>Fetches a historical group by sequence.</summary>
         public unsafe GroupConsumer FetchGroup(string name, ulong sequence, byte priority = 128)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             using var utf = Utf8String.Create(name);
             void* group = null;
@@ -118,6 +122,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to a JSON snapshot track.</summary>
         public unsafe JsonSnapshotConsumer SubscribeJsonSnapshot(string name, bool compression = false)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             using var utf = Utf8String.Create(name);
             void* consumer = null;
@@ -128,6 +133,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to a JSON stream track.</summary>
         public unsafe JsonStreamConsumer SubscribeJsonStream(string name, bool compression = false)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             using var utf = Utf8String.Create(name);
             void* consumer = null;
@@ -138,6 +144,7 @@ namespace MoqNet.Native
         /// <summary>Subscribes to an audio track and decodes PCM. Treat codec input as untrusted.</summary>
         public unsafe AudioConsumer SubscribeAudio(string name, string codec, uint sampleRate, uint channelCount, AudioFormat format, long latencyMaxMs = -1)
         {
+            using var call = EnterCall();
             Require(name, nameof(name));
             Require(codec, nameof(codec));
             using var n = Utf8String.Create(name);
@@ -181,6 +188,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next route JSON, or returns null when dropped.</summary>
         public unsafe string? Next()
         {
+            using var call = EnterCall();
             byte* json = null;
             var status = NativeMethods.moq_route_watch_next((void*)Handle, &json);
             if (Ffi.IsNone(status, "RouteWatch.Next"))
@@ -189,6 +197,12 @@ namespace MoqNet.Native
             }
 
             return Ffi.ClaimString(json);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_route_watch_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -215,6 +229,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next catalog JSON, or returns null at end of stream.</summary>
         public unsafe string? Next()
         {
+            using var call = EnterCall();
             byte* json = null;
             var status = NativeMethods.moq_catalog_consumer_next((void*)Handle, &json);
             if (Ffi.IsNone(status, "CatalogConsumer.Next"))
@@ -223,6 +238,12 @@ namespace MoqNet.Native
             }
 
             return Ffi.ClaimString(json);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_catalog_consumer_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -249,6 +270,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next frame, or returns null when the track ends.</summary>
         public unsafe MoqFrame? ReadFrame()
         {
+            using var call = EnterCall();
             byte* payload = null;
             UIntPtr len = UIntPtr.Zero;
             ulong timestamp = 0;
@@ -264,6 +286,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next group, or returns null when the track ends.</summary>
         public unsafe GroupConsumer? NextGroup()
         {
+            using var call = EnterCall();
             void* group = null;
             var status = NativeMethods.moq_track_consumer_next_group((void*)Handle, &group);
             if (Ffi.IsNone(status, "NextGroup"))
@@ -272,6 +295,12 @@ namespace MoqNet.Native
             }
 
             return new GroupConsumer((IntPtr)group);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_track_consumer_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -295,6 +324,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next frame, or returns null when the group ends.</summary>
         public unsafe MoqFrame? ReadFrame()
         {
+            using var call = EnterCall();
             byte* payload = null;
             UIntPtr len = UIntPtr.Zero;
             ulong timestamp = 0;
@@ -331,6 +361,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next media frame, or returns null at end of stream.</summary>
         public unsafe MoqFrame? Next()
         {
+            using var call = EnterCall();
             byte* payload = null;
             UIntPtr len = UIntPtr.Zero;
             ulong timestamp = 0;
@@ -342,6 +373,12 @@ namespace MoqNet.Native
             }
 
             return new MoqFrame(Ffi.ClaimBuffer(payload, len), timestamp, keyframe != 0);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_media_consumer_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -368,6 +405,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next JSON document, or returns null at end of stream.</summary>
         public unsafe string? Next()
         {
+            using var call = EnterCall();
             byte* json = null;
             var status = NativeMethods.moq_json_snapshot_consumer_next((void*)Handle, &json);
             if (Ffi.IsNone(status, "JsonSnapshotConsumer.Next"))
@@ -376,6 +414,12 @@ namespace MoqNet.Native
             }
 
             return Ffi.ClaimString(json);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_json_snapshot_consumer_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -402,6 +446,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next JSON value, or returns null at end of stream.</summary>
         public unsafe string? Next()
         {
+            using var call = EnterCall();
             byte* json = null;
             var status = NativeMethods.moq_json_stream_consumer_next((void*)Handle, &json);
             if (Ffi.IsNone(status, "JsonStreamConsumer.Next"))
@@ -410,6 +455,12 @@ namespace MoqNet.Native
             }
 
             return Ffi.ClaimString(json);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_json_stream_consumer_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -436,6 +487,7 @@ namespace MoqNet.Native
         /// <summary>Blocks until the next PCM frame, or returns null at end of stream.</summary>
         public unsafe MoqFrame? Next()
         {
+            using var call = EnterCall();
             byte* payload = null;
             UIntPtr len = UIntPtr.Zero;
             ulong timestamp = 0;
@@ -446,6 +498,12 @@ namespace MoqNet.Native
             }
 
             return new MoqFrame(Ffi.ClaimBuffer(payload, len), timestamp);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_audio_consumer_cancel(handle);
         }
 
         /// <inheritdoc />

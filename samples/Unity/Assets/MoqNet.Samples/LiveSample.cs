@@ -242,7 +242,10 @@ namespace MoqNet.Samples.Unity
 
         private async UniTask StartSubscriberAsync(CancellationToken cancellationToken)
         {
-            _consumeBroadcast = await _session.Consumer.RequestBroadcastAsync(SampleProtocol.BroadcastPath, cancellationToken);
+            using (var announced = _session.Consumer.AnnouncedBroadcast(SampleProtocol.BroadcastPath))
+            {
+                _consumeBroadcast = await announced.AvailableAsync(cancellationToken);
+            }
             _audioConsumer = await _consumeBroadcast.SubscribeAudioAsync(
                 SampleProtocol.AudioTrack,
                 SampleProtocol.AudioCodec,

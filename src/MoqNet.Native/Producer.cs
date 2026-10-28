@@ -216,9 +216,16 @@ namespace MoqNet.Native
         /// <summary>Blocks until a subscriber requests a track.</summary>
         public unsafe TrackRequest RequestedTrack()
         {
+            using var call = EnterCall();
             void* request = null;
             Ffi.Check(NativeMethods.moq_broadcast_dynamic_requested_track((void*)Handle, &request), "RequestedTrack");
             return new TrackRequest((IntPtr)request);
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_broadcast_dynamic_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -351,12 +358,14 @@ namespace MoqNet.Native
         /// <summary>Blocks until at least one subscriber is attached.</summary>
         public unsafe void Used()
         {
+            using var call = EnterCall();
             Ffi.Check(NativeMethods.moq_track_producer_used((void*)Handle), "Used");
         }
 
         /// <summary>Blocks until no subscribers remain.</summary>
         public unsafe void Unused()
         {
+            using var call = EnterCall();
             Ffi.Check(NativeMethods.moq_track_producer_unused((void*)Handle), "Unused");
         }
 

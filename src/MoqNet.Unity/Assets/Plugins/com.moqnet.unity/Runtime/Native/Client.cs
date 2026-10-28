@@ -115,6 +115,7 @@ namespace MoqNet.Native
         public unsafe Session Connect(string url)
         {
             Require(url, nameof(url));
+            // Not counted with EnterCall(); the native call copies what it needs before it blocks.
             using var utf = Utf8String.Create(url);
             void* session = null;
             Ffi.Check(NativeMethods.moq_client_connect((void*)Handle, utf.Ptr, &session), "Connect");
@@ -132,6 +133,12 @@ namespace MoqNet.Native
         public unsafe void Cancel()
         {
             Ffi.Check(NativeMethods.moq_client_cancel((void*)Handle), "Cancel");
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_client_cancel(handle);
         }
 
         /// <inheritdoc />
@@ -208,7 +215,14 @@ namespace MoqNet.Native
         /// </summary>
         public unsafe void Closed()
         {
+            using var call = EnterCall();
             Ffi.Check(NativeMethods.moq_session_closed((void*)Handle), "Closed");
+        }
+
+        /// <inheritdoc />
+        private protected override unsafe void CancelPendingCalls(void* handle)
+        {
+            NativeMethods.moq_session_cancel(handle, 0);
         }
 
         /// <inheritdoc />

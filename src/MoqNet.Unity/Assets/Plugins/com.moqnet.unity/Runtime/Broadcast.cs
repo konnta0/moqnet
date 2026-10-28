@@ -132,7 +132,7 @@ namespace MoqNet.Unity
                 throw new ArgumentNullException(nameof(name));
             }
 
-            var track = await UniTask.RunOnThreadPool(() => _native.SubscribeTrack(name, options), cancellationToken: cancellationToken);
+            var track = await NativeAsync.Call(() => _native.SubscribeTrack(name, options), cancellationToken);
             return new TrackConsumer(track);
         }
 
@@ -156,9 +156,9 @@ namespace MoqNet.Unity
                 throw new ArgumentNullException(nameof(codec));
             }
 
-            var consumer = await UniTask.RunOnThreadPool(
+            var consumer = await NativeAsync.Call(
                 () => _native.SubscribeAudio(name, codec, sampleRate, channelCount, format, latencyMaxMs),
-                cancellationToken: cancellationToken);
+                cancellationToken);
             return new AudioConsumer(consumer);
         }
 

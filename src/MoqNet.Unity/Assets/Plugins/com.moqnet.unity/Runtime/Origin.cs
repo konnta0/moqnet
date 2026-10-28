@@ -55,7 +55,18 @@ namespace MoqNet.Unity
             _native = native;
         }
 
-        /// <summary>Requests a broadcast by path.</summary>
+        /// <summary>Waits until the broadcast at <paramref name="path"/> is announced.</summary>
+        public AnnouncedBroadcast AnnouncedBroadcast(string path)
+        {
+            if (path == null)
+            {
+                throw new ArgumentNullException(nameof(path));
+            }
+
+            return new AnnouncedBroadcast(_native.AnnouncedBroadcast(path));
+        }
+
+        /// <summary>Requests a broadcast by path. Fails immediately if it is not announced yet.</summary>
         public async UniTask<BroadcastConsumer> RequestBroadcastAsync(string path, CancellationToken cancellationToken = default)
         {
             if (path == null)
@@ -63,8 +74,44 @@ namespace MoqNet.Unity
                 throw new ArgumentNullException(nameof(path));
             }
 
-            var consumer = await UniTask.RunOnThreadPool(() => _native.RequestBroadcast(path), cancellationToken: cancellationToken);
+            var consumer = await NativeAsync.Call(() => _native.RequestBroadcast(path), cancellationToken);
             return new BroadcastConsumer(consumer);
+        }
+
+        /// <inheritdoc />
+        public void Dispose()
+        {
+            _native.Dispose();
+        }
+    }
+
+    /// <summary>Waits for a single named broadcast to become available.</summary>
+    public sealed class AnnouncedBroadcast : IDisposable
+    {
+        private readonly Native.AnnouncedBroadcast _native;
+
+        internal AnnouncedBroadcast(Native.AnnouncedBroadcast native)
+        {
+            _native = native;
+        }
+
+        /// <summary>Blocks until the broadcast is announced.</summary>
+        public async UniTask<BroadcastConsumer> AvailableAsync(CancellationToken cancellationToken = default)
+        {
+            using (cancellationToken.Register(static state =>
+            {
+                try
+                {
+                    ((Native.AnnouncedBroadcast)state).Cancel();
+                }
+                catch (MoqException)
+                {
+                }
+            }, _native))
+            {
+                var consumer = await NativeAsync.Call(() => _native.Available(), cancellationToken);
+                return new BroadcastConsumer(consumer);
+            }
         }
 
         /// <inheritdoc />

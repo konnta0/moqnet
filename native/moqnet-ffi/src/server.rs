@@ -2,6 +2,7 @@ use std::os::raw::{c_char, c_void};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+use crate::cancel;
 use crate::client::Session;
 use crate::ffi::{as_ref, clear_error, drop_raw, fail, into_raw, read_cstr, read_cstr_opt, to_cstring, write_out, MOQ_NONE, MOQ_OK};
 use crate::origin::{resolve_pair, OriginProducer};
@@ -16,6 +17,8 @@ struct ServerState {
 
 pub struct Server {
     state: Mutex<ServerState>,
+    // Watch so Close wakes Accept without taking `state` (Accept holds that lock).
+    closed: cancel::Flag,
 }
 
 pub struct Request {
@@ -47,12 +50,31 @@ pub extern "C" fn moq_server_new() -> *mut c_void {
             consume: None,
             server: None,
         }),
+        closed: cancel::new(),
     })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn moq_server_free(handle: *mut c_void) {
     drop_raw::<Server>(handle);
+}
+
+/// Stops the server: a pending or later accept() returns none (as when the listener ends)
+/// and the listener is closed. Does not block: if accept() is waiting it holds the state
+/// lock, so close only sets the flag and accept itself drops the listener when it wakes up.
+#[no_mangle]
+pub unsafe extern "C" fn moq_server_close(handle: *mut c_void) -> i32 {
+    clear_error();
+    let server = match as_ref::<Server>(handle) {
+        Ok(s) => s,
+        Err(e) => return e,
+    };
+    cancel::set(&server.closed);
+    if let Ok(mut state) = server.state.try_lock() {
+        let _guard = runtime::enter();
+        state.server = None;
+    }
+    MOQ_OK
 }
 
 #[no_mangle]
@@ -196,6 +218,9 @@ pub unsafe extern "C" fn moq_server_listen(handle: *mut c_void, out_addr: *mut *
         Ok(s) => s,
         Err(e) => return e,
     };
+    if cancel::is_set(&server.closed) {
+        return fail("closed");
+    }
     let mut state = match server.state.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
@@ -227,6 +252,9 @@ pub unsafe extern "C" fn moq_server_accept(handle: *mut c_void, out_request: *mu
         Ok(s) => s,
         Err(e) => return e,
     };
+    if cancel::is_set(&server.closed) {
+        return MOQ_NONE;
+    }
     let mut state = match server.state.lock() {
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
@@ -236,8 +264,13 @@ pub unsafe extern "C" fn moq_server_accept(handle: *mut c_void, out_request: *mu
     let Some(native) = state.server.as_mut() else {
         return fail("not listening; call listen() first");
     };
-    match runtime::block_on(native.accept()) {
-        Some(request) => {
+    match runtime::block_on(cancel::or_set(&server.closed, native.accept())) {
+        None => {
+            // Accept held the lock, so close could not drop the listener.
+            state.server = None;
+            MOQ_NONE
+        }
+        Some(Some(request)) => {
             let transport = request.transport().to_string();
             let url = request.url().map(|u| u.to_string());
             let path = request.path().to_string();
@@ -255,7 +288,7 @@ pub unsafe extern "C" fn moq_server_accept(handle: *mut c_void, out_request: *mu
                 }),
             )
         }
-        None => MOQ_NONE,
+        Some(None) => MOQ_NONE,
     }
 }
 
