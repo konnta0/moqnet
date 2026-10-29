@@ -1,0 +1,25 @@
+{
+  "name": "com.moqnet.unity",
+  "version": "0.4.19-native.0",
+  "displayName": "MoqNet for Unity",
+  "license": "MIT",
+  "description": "Community-maintained MoQ bindings for Unity with UniTask support. Transport is QUIC/WebTransport inside the native library.",
+  "unity": "2021.3",
+  "unityRelease": "37f1",
+  "keywords": [
+    "moq",
+    "quic",
+    "webtransport",
+    "media",
+    "pubsub",
+    "unitask"
+  ],
+  "author": {
+    "name": "konnta0",
+    "url": "https://github.com/konnta0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/konnta0/moqnet.git"
+  }
+}
