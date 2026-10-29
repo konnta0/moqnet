@@ -80,16 +80,19 @@ mod imp {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let input = moq_audio::encode::Input {
-            format: fmt,
-            sample_rate,
-            channels,
+        let layout = match moq_audio::Layout::from_channels(channels) {
+            Ok(v) => v,
+            Err(err) => return map_err(err),
         };
+        let mut input = moq_audio::encode::Input::new(sample_rate, layout);
+        input.format = fmt;
         let mut options = moq_audio::encode::Options::default();
         options.track = Some(name);
-        options.codec = moq_audio::encode::Codec::Opus;
-        options.bitrate = if bitrate >= 0 { Some(bitrate as u32) } else { None };
-        options.frame_duration = Duration::from_millis(frame_duration_ms.into());
+        options.settings = moq_audio::encode::Settings::from_input(moq_audio::encode::Codec::Opus, &input);
+        if bitrate >= 0 {
+            options.settings.bitrate = Some(moq_net::bandwidth::Rate::from_bps(bitrate as u64));
+        }
+        options.settings.frame_duration = Duration::from_millis(frame_duration_ms.into());
 
         match producer.with_state(|state| {
             moq_audio::encode::Producer::new(&mut state.broadcast, state.catalog.clone(), input, &options)
@@ -123,7 +126,7 @@ mod imp {
         let Some(inner) = guard.as_ref() else {
             return closed();
         };
-        match to_cstring(inner.track().demand().name().to_string()) {
+        match to_cstring(inner.track_name().to_string()) {
             Ok(ptr) => write_out(out_name, ptr),
             Err(e) => e,
         }
@@ -172,7 +175,7 @@ mod imp {
             Ok(g) => g,
             Err(_) => return fail("lock poisoned"),
         };
-        let Some(inner) = guard.take() else {
+        let Some(mut inner) = guard.take() else {
             return closed();
         };
         inner.finish().map(|_| MOQ_OK).unwrap_or_else(map_err)
@@ -216,15 +219,13 @@ mod imp {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let mut config = moq_audio::decode::Config::default();
-        config.format = fmt;
-        config.latency_max = if latency_max_ms >= 0 {
-            Some(Duration::from_millis(latency_max_ms as u64))
-        } else {
-            None
-        };
+        let mut options = moq_audio::decode::Options::default();
+        options.output.format = fmt;
+        if latency_max_ms >= 0 {
+            options.max_age = Duration::from_millis(latency_max_ms as u64);
+        }
 
-        match runtime::block_on(moq_audio::decode::Consumer::new(consumer.inner(), &cfg, name, config)) {
+        match runtime::block_on(moq_audio::decode::Consumer::new(consumer.inner(), &cfg, name, options)) {
             Ok(inner) => write_out(
                 out_consumer,
                 into_raw(AudioConsumer {

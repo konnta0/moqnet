@@ -9,10 +9,10 @@ use crate::origin::{resolve_pair, OriginProducer};
 use crate::runtime;
 
 struct ServerState {
-    config: moq_native::ServerConfig,
+    config: moq_tokio::listen::Config,
     publish: Option<OriginProducer>,
     consume: Option<OriginProducer>,
-    server: Option<moq_native::Server>,
+    listener: Option<moq_tokio::Listener>,
 }
 
 pub struct Server {
@@ -22,7 +22,7 @@ pub struct Server {
 }
 
 pub struct Request {
-    inner: Mutex<Option<moq_native::Request>>,
+    inner: Mutex<Option<moq_tokio::server::Request>>,
     publish: Mutex<Option<OriginProducer>>,
     consume: Mutex<Option<OriginProducer>>,
     transport: String,
@@ -39,16 +39,20 @@ fn split_list(raw: &str) -> Vec<String> {
         .collect()
 }
 
+async fn close_listener(listener: moq_tokio::Listener) {
+    listener.close().await;
+}
+
 #[no_mangle]
 pub extern "C" fn moq_server_new() -> *mut c_void {
     clear_error();
     let _guard = runtime::enter();
     into_raw(Server {
         state: Mutex::new(ServerState {
-            config: moq_native::ServerConfig::default(),
+            config: moq_tokio::listen::Config::default(),
             publish: None,
             consume: None,
-            server: None,
+            listener: None,
         }),
         closed: cancel::new(),
     })
@@ -71,8 +75,9 @@ pub unsafe extern "C" fn moq_server_close(handle: *mut c_void) -> i32 {
     };
     cancel::set(&server.closed);
     if let Ok(mut state) = server.state.try_lock() {
-        let _guard = runtime::enter();
-        state.server = None;
+        if let Some(listener) = state.listener.take() {
+            runtime::block_on(close_listener(listener));
+        }
     }
     MOQ_OK
 }
@@ -88,15 +93,19 @@ pub unsafe extern "C" fn moq_server_set_bind(handle: *mut c_void, addr: *const c
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    if addr.parse::<std::net::SocketAddr>().is_err() {
-        let port_ok = addr.rsplit_once(':').is_some_and(|(_, port)| port.parse::<u16>().is_ok());
-        if !port_ok {
+    let bind: moq_tokio::listen::Bind = match addr.parse() {
+        Ok(v) => v,
+        Err(_) => {
+            let port_ok = addr.rsplit_once(':').is_some_and(|(_, port)| port.parse::<u16>().is_ok());
+            if !port_ok {
+                return fail(format!("invalid bind address: {addr}"));
+            }
             return fail(format!("invalid bind address: {addr}"));
         }
-    }
+    };
     match server.state.lock() {
         Ok(mut state) => {
-            state.config.bind = Some(addr);
+            state.config.bind = Some(bind);
             MOQ_OK
         }
         Err(_) => fail("lock poisoned"),
@@ -225,15 +234,18 @@ pub unsafe extern "C" fn moq_server_listen(handle: *mut c_void, out_addr: *mut *
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    if state.server.is_some() {
+    if state.listener.is_some() {
         return fail("already listening");
     }
     let config = state.config.clone();
-    match runtime::block_on(async move { config.init() }) {
-        Ok(native) => match native.local_addr() {
+    match runtime::block_on(async move {
+        let native = config.init(moq_tokio::quic::Config::default())?;
+        native.listen().await
+    }) {
+        Ok(listener) => match listener.local_addr() {
             Ok(addr) => {
                 let text = addr.to_string();
-                state.server = Some(native);
+                state.listener = Some(listener);
                 match to_cstring(text) {
                     Ok(ptr) => write_out(out_addr, ptr),
                     Err(e) => e,
@@ -261,13 +273,14 @@ pub unsafe extern "C" fn moq_server_accept(handle: *mut c_void, out_request: *mu
     };
     let publish = state.publish.clone();
     let consume = state.consume.clone();
-    let Some(native) = state.server.as_mut() else {
+    let Some(listener) = state.listener.as_mut() else {
         return fail("not listening; call listen() first");
     };
-    match runtime::block_on(cancel::or_set(&server.closed, native.accept())) {
+    match runtime::block_on(cancel::or_set(&server.closed, listener.accept())) {
         None => {
-            // Accept held the lock, so close could not drop the listener.
-            state.server = None;
+            if let Some(listener) = state.listener.take() {
+                runtime::block_on(close_listener(listener));
+            }
             MOQ_NONE
         }
         Some(Some(request)) => {
@@ -303,10 +316,10 @@ pub unsafe extern "C" fn moq_server_cert_fingerprints(handle: *const c_void, out
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    let Some(native) = state.server.as_ref() else {
+    let Some(listener) = state.listener.as_ref() else {
         return fail("not listening; call listen() first");
     };
-    let prints = native.certificates().fingerprints();
+    let prints = listener.certificates().fingerprints();
     match to_cstring(serde_json::to_string(&prints).unwrap_or_else(|_| "[]".into())) {
         Ok(ptr) => write_out(out_json, ptr),
         Err(e) => e,
@@ -414,7 +427,7 @@ pub unsafe extern "C" fn moq_request_accept(handle: *mut c_void, out_session: *m
             .ok()
             .await
             .map_err(|err| fail(format!("connect: {err}")))?;
-        Ok::<_, i32>(Session::new(session, publish, subscribe))
+        Ok::<_, i32>(Session::accepted(session, publish, subscribe))
     }) {
         Ok(session) => write_out(out_session, into_raw(session)),
         Err(e) => e,
@@ -435,7 +448,7 @@ pub unsafe extern "C" fn moq_request_reject(handle: *mut c_void, code: u16) -> i
     let Some(native) = native else {
         return fail("already responded");
     };
-    runtime::block_on(native.close(code))
+    runtime::block_on(native.reject(moq_tokio::server::Reject::App(code)))
         .map(|_| MOQ_OK)
         .unwrap_or_else(|err| fail(format!("reject: {err}")))
 }

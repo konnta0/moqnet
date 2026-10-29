@@ -1,12 +1,15 @@
 [log]
 level = "debug"
 
-[server]
-listen = "127.0.0.1:4443"
+# moq-relay 0.17 listens under [listen]; [server] is accepted as an alias.
+[listen]
+bind = "127.0.0.1:4443"
 tls.generate = ["localhost"]
 
 [web.http]
 listen = "127.0.0.1:4443"
 
+# JWT verification moved out of the relay. Point this at `moq auth serve`
+# (see samples/Auth/README.md). [auth] key is refused in 0.17.
 [auth]
-key = "samples/Auth/dev-key.jwk"
+url = "http://127.0.0.1:4440/"

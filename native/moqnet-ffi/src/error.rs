@@ -4,10 +4,10 @@ pub fn map_err(err: impl std::fmt::Display) -> i32 {
     fail(err.to_string())
 }
 
-pub fn map_connect(err: moq_native::Error) -> i32 {
+pub fn map_connect(err: moq_tokio::Error) -> i32 {
     match err.connect_error() {
-        Some(moq_native::ConnectError::Unauthorized) => fail("unauthorized"),
-        Some(moq_native::ConnectError::Forbidden) => fail("forbidden"),
+        Some(moq_tokio::ConnectError::Unauthorized) => fail("unauthorized"),
+        Some(moq_tokio::ConnectError::Forbidden) => fail("forbidden"),
         _ => fail(format!("connect: {err}")),
     }
 }

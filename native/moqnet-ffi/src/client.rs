@@ -12,28 +12,54 @@ use crate::origin::{resolve_pair, OriginProducer};
 use crate::runtime;
 
 pub struct Client {
-    config: moq_native::ClientConfig,
+    config: moq_tokio::connect::Config,
     publish: Option<OriginProducer>,
     consume: Option<OriginProducer>,
     cancelled: bool,
 }
 
+#[derive(Clone)]
+enum SessionInner {
+    Connection(moq_tokio::Connection),
+    Session(moq_net::Session),
+}
+
 pub struct Session {
-    inner: Option<moq_net::Session>,
+    inner: Option<SessionInner>,
     publisher: OriginProducer,
     consumer: crate::origin::OriginConsumer,
 }
 
 impl Session {
-    pub(crate) fn new(
+    pub(crate) fn connected(
+        connection: moq_tokio::Connection,
+        publish: moq_net::origin::Producer,
+        subscribe: moq_net::origin::Producer,
+    ) -> Self {
+        Self {
+            inner: Some(SessionInner::Connection(connection)),
+            publisher: OriginProducer::from_inner(publish),
+            consumer: crate::origin::OriginConsumer::from_inner(subscribe.consume()),
+        }
+    }
+
+    pub(crate) fn accepted(
         session: moq_net::Session,
         publish: moq_net::origin::Producer,
         subscribe: moq_net::origin::Producer,
     ) -> Self {
         Self {
-            inner: Some(session),
+            inner: Some(SessionInner::Session(session)),
             publisher: OriginProducer::from_inner(publish),
             consumer: crate::origin::OriginConsumer::from_inner(subscribe.consume()),
+        }
+    }
+
+    fn abort(&self, err: moq_net::Error) {
+        match &self.inner {
+            Some(SessionInner::Connection(connection)) => connection.abort(err),
+            Some(SessionInner::Session(session)) => session.abort(err),
+            None => {}
         }
     }
 }
@@ -41,8 +67,11 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         let _guard = runtime::enter();
-        if let Some(session) = self.inner.take() {
-            session.abort(moq_net::Error::Cancel);
+        if let Some(inner) = self.inner.take() {
+            match inner {
+                SessionInner::Connection(connection) => connection.abort(moq_net::Error::Cancel),
+                SessionInner::Session(session) => session.abort(moq_net::Error::Cancel),
+            }
         }
     }
 }
@@ -55,12 +84,20 @@ fn split_list(raw: &str) -> Vec<String> {
         .collect()
 }
 
+fn default_client_config() -> moq_tokio::connect::Config {
+    let mut config = moq_tokio::connect::Config::default();
+    // Preserve the previous one-shot connect: ClosedAsync returns when this
+    // transport ends, rather than waiting out the reconnect loop.
+    config.once = Some(true);
+    config
+}
+
 #[no_mangle]
 pub extern "C" fn moq_client_new() -> *mut c_void {
     clear_error();
     let _guard = runtime::enter();
     into_raw(Mutex::new(Client {
-        config: moq_native::ClientConfig::default(),
+        config: default_client_config(),
         publish: None,
         consume: None,
         cancelled: false,
@@ -81,7 +118,7 @@ pub unsafe extern "C" fn moq_client_set_tls_disable_verify(handle: *mut c_void, 
     };
     match client.lock() {
         Ok(mut state) => {
-            state.config.tls.disable_verify = Some(disable != 0);
+            state.config.tls.insecure = Some(disable != 0);
             MOQ_OK
         }
         Err(_) => fail("lock poisoned"),
@@ -201,7 +238,7 @@ pub unsafe extern "C" fn moq_client_set_bind(handle: *mut c_void, addr: *const c
     };
     match client.lock() {
         Ok(mut state) => {
-            state.config.bind = parsed;
+            state.config.bind = Some(parsed);
             MOQ_OK
         }
         Err(_) => fail("lock poisoned"),
@@ -291,15 +328,18 @@ pub unsafe extern "C" fn moq_client_connect(
     }
 
     let result = runtime::block_on(async move {
-        let native = config.init().map_err(map_connect)?;
+        let native = config
+            .init(moq_tokio::quic::Config::default())
+            .map_err(map_connect)?;
         let (publish, subscribe) = resolve_pair(publish.as_ref(), consume.as_ref());
-        let session = native
+        let connection = native
             .with_publisher(&publish)
             .with_subscriber(subscribe.clone())
             .connect(parsed)
+            .established()
             .await
             .map_err(map_connect)?;
-        Ok::<Session, i32>(Session::new(session, publish, subscribe))
+        Ok::<Session, i32>(Session::connected(connection, publish, subscribe))
     });
 
     match result {
@@ -362,10 +402,22 @@ pub unsafe extern "C" fn moq_session_cancel(handle: *mut c_void, code: u32) -> i
         Ok(s) => s,
         Err(e) => return e,
     };
-    if let Some(inner) = &session.inner {
-        inner.abort(moq_net::Error::Remote(code));
-    }
+    session.abort(moq_net::SessionError::from_code(code).into());
     MOQ_OK
+}
+
+fn stats_json(stats: moq_net::session::Stats) -> serde_json::Value {
+    serde_json::json!({
+        "rtt_us": stats.rtt.map(|d| d.as_micros() as u64),
+        "send_rate_bps": stats.estimated_send_rate.map(moq_net::bandwidth::Rate::as_bps),
+        "recv_rate_bps": stats.estimated_recv_rate.map(moq_net::bandwidth::Rate::as_bps),
+        "bytes_sent": stats.bytes_sent,
+        "bytes_received": stats.bytes_received,
+        "bytes_lost": stats.bytes_lost,
+        "packets_sent": stats.packets_sent,
+        "packets_received": stats.packets_received,
+        "packets_lost": stats.packets_lost,
+    })
 }
 
 #[no_mangle]
@@ -376,23 +428,12 @@ pub unsafe extern "C" fn moq_session_stats_json(handle: *const c_void, out_json:
         Ok(s) => s,
         Err(e) => return e,
     };
-    let stats = session
-        .inner
-        .as_ref()
-        .map(moq_net::Session::stats)
-        .unwrap_or_default();
-    let json = serde_json::json!({
-        "rtt_us": stats.rtt.map(|d| d.as_micros() as u64),
-        "send_rate_bps": stats.estimated_send_rate,
-        "recv_rate_bps": stats.estimated_recv_rate,
-        "bytes_sent": stats.bytes_sent,
-        "bytes_received": stats.bytes_received,
-        "bytes_lost": stats.bytes_lost,
-        "packets_sent": stats.packets_sent,
-        "packets_received": stats.packets_received,
-        "packets_lost": stats.packets_lost,
-    });
-    match to_cstring(json.to_string()) {
+    let stats = match &session.inner {
+        Some(SessionInner::Connection(connection)) => connection.monitor().stats().unwrap_or_default(),
+        Some(SessionInner::Session(session)) => session.stats(),
+        None => moq_net::session::Stats::default(),
+    };
+    match to_cstring(stats_json(stats).to_string()) {
         Ok(ptr) => write_out(out_json, ptr),
         Err(e) => e,
     }
@@ -405,14 +446,16 @@ pub unsafe extern "C" fn moq_session_closed(handle: *mut c_void) -> i32 {
         Ok(s) => s,
         Err(e) => return e,
     };
-    let Some(inner) = session.inner.clone() else {
-        return closed();
-    };
-    match runtime::block_on(inner.closed()) {
-        err => {
-            set_from_closed(err);
+    match session.inner.clone() {
+        Some(SessionInner::Connection(connection)) => match runtime::block_on(connection.closed()) {
+            Ok(()) => closed(),
+            Err(err) => fail(err.to_string()),
+        },
+        Some(SessionInner::Session(inner)) => {
+            set_from_closed(runtime::block_on(inner.closed()));
             MOQ_ERR
         }
+        None => closed(),
     }
 }
 

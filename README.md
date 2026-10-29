@@ -1,7 +1,7 @@
 # MoqNet
 
 ![Development Status](https://img.shields.io/badge/status-alpha-red)
-![Version](https://img.shields.io/badge/version-0.3.17.x-blue)
+![Version](https://img.shields.io/badge/version-0.4.19.x-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![.NET](https://img.shields.io/badge/.NET-8.0-purple)
 
@@ -14,8 +14,8 @@ C# / Unity bindings for [Media over QUIC](https://github.com/moq-dev/moq) — em
 | | |
 |--|--|
 | **Maturity** | Alpha — APIs may change; package versions track `moq-ffi` |
-| **Package version** | `0.3.17.x` = `moq-ffi` `0.3.17` + dotnet patch |
-| **Upstream** | [moq](https://github.com/moq-dev/moq) `0f7cbd765f183dd13dd3b953a47f8c6b61811da0` |
+| **Package version** | `0.4.19.x` = `moq-ffi` `0.4.19` + dotnet patch |
+| **Upstream** | crates.io pins matching [moq-relay 0.17.9](https://github.com/moq-dev/moq/releases/tag/moq-relay-v0.17.9) (`30fd9d45`); `moq-native` is a tombstone, transport is `moq-tokio` |
 | **Production use** | Evaluate for your workload; no stability guarantees yet |
 
 **Available:** Client / Session / Origin / Broadcast / raw tracks / media catalog / JSON tracks / Server / audio / video encode helpers. .NET 8+ and Unity 2021.3.37f1+.
@@ -44,7 +44,7 @@ See [docs/architecture.md](docs/architecture.md).
 
 ```
 ┌─────────────────┐
-│  moq (Rust)     │  ← moq-net / moq-native (MIT OR Apache-2.0)
+│  moq (Rust)     │  ← moq-net / moq-tokio (MIT OR Apache-2.0)
 └────────┬────────┘
          │
 ┌────────▼────────┐
@@ -143,14 +143,14 @@ Mobile (audio only):
 
 GitHub Actions on `main` / PRs: version check, Linux native build + `dotnet test MoqNet.sln`, UPM metadata validation.
 
-Release tags (from [build/Versions.props](build/Versions.props), currently `0.3.17.4`):
+Release tags (from [build/Versions.props](build/Versions.props), currently `0.4.19.0`):
 
 | Tag | Workflow | Output |
 |-----|----------|--------|
-| `v0.3.17.4` | `create-tags.yml` | Creates package tags and runs all publish workflows |
-| `native/v0.3.17.4` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
-| `client/v0.3.17.4` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
-| `unity/v0.3.17.4` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
+| `v0.4.19.0` | `create-tags.yml` | Creates package tags and runs all publish workflows |
+| `native/v0.4.19.0` | `publish-native.yml` | `MoqNet.Native` nupkg + GitHub Release |
+| `client/v0.4.19.0` | `publish-client.yml` | `MoqNet.Client` nupkg + GitHub Release |
+| `unity/v0.4.19.0` | `publish-unity.yml` | UPM tarball, GitHub Release, `upm` branch |
 
 NuGet publishing uses nuget.org Trusted Publishing; no long-lived API key is stored in GitHub. Create two policies with package owner `konnta`, repository owner `konnta0`, repository `moqnet`, no environment, and the **Push new packages and package versions** scope:
 

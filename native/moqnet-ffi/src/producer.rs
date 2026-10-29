@@ -39,7 +39,7 @@ pub struct TrackDynamic {
 pub struct GroupRequest {
     sequence: u64,
     priority: u8,
-    inner: Mutex<Option<moq_net::track::GroupRequest>>,
+    inner: Mutex<Option<moq_net::group::Request>>,
 }
 
 pub struct TrackProducer {
@@ -57,7 +57,7 @@ pub struct MediaProducer {
 }
 
 enum MediaDecoder {
-    Track(Box<moq_mux::import::Track<Extra>>),
+    Track(Box<moq_mux::import::Track>),
     Container(moq_mux::import::Container<Extra>),
 }
 
@@ -66,14 +66,17 @@ pub struct MediaStreamProducer {
 }
 
 enum StreamDecoder {
-    Track(Box<moq_mux::import::TrackStream<Extra>>),
+    Track(Box<moq_mux::import::TrackStream>),
     Container(moq_mux::import::ContainerStream<Extra>),
 }
 
 impl BroadcastProducer {
     pub(crate) fn from_inner(mut broadcast: moq_net::broadcast::Producer) -> Result<Self, i32> {
-        let catalog = moq_mux::catalog::Producer::with_catalog(&mut broadcast, moq_mux::catalog::hang::Catalog::default())
-            .map_err(map_err)?;
+        let catalog = moq_mux::catalog::Producer::new(
+            &mut broadcast,
+            moq_mux::catalog::Config::default().with_catalog(moq_mux::catalog::hang::Catalog::<Extra>::default()),
+        )
+        .map_err(map_err)?;
         Ok(Self {
             state: Mutex::new(Some(BroadcastState { broadcast, catalog })),
         })
@@ -92,13 +95,31 @@ impl BroadcastProducer {
     }
 }
 
-fn raw_track_info(priority: u8, ordered: u8, latency_max_ms: i64, timescale: i64) -> Result<moq_net::track::Info, i32> {
+fn reserve_media_track(
+    state: &mut BroadcastState,
+    format: &moq_mux::import::Format,
+    build: impl FnOnce(
+        moq_net::track::Request,
+        moq_mux::catalog::Reserved<Extra>,
+    ) -> Result<moq_mux::import::Track, moq_mux::Error>,
+) -> Result<*mut c_void, i32> {
+    let mut broadcast = state.broadcast.clone();
+    let name = broadcast.unique_name(&format!(".{format}"));
+    let request = broadcast.reserve_track(name).map_err(map_err)?;
+    let import = build(request, state.catalog.reserve()).map_err(map_err)?;
+    let demand = import.demand();
+    Ok(into_raw(MediaProducer {
+        decoder: Mutex::new(Some(MediaDecoder::Track(Box::new(import)))),
+        demand: Some(demand),
+    }))
+}
+
+fn raw_track_info(priority: u8, _ordered: u8, latency_max_ms: i64, timescale: i64) -> Result<moq_net::track::Info, i32> {
     let mut info = moq_net::track::Info::default()
         .with_timescale(moq_net::Timescale::MICRO)
-        .with_priority(priority)
-        .with_ordered(ordered != 0);
+        .with_priority(priority);
     if latency_max_ms >= 0 {
-        info = info.with_latency_max(std::time::Duration::from_millis(latency_max_ms as u64));
+        info = info.with_max_age(std::time::Duration::from_millis(latency_max_ms as u64));
     }
     if timescale > 0 {
         let scale = moq_net::Timescale::new(timescale as u64).map_err(|_| fail("invalid timescale"))?;
@@ -165,11 +186,15 @@ pub unsafe extern "C" fn moq_broadcast_producer_set_announce(handle: *const c_vo
     };
     producer
         .with_state(|state| {
-            let route = state.broadcast.consume().route();
-            state
-                .broadcast
-                .set_route(route.with_announce(announce != 0))
-                .map_err(map_err)
+            if announce != 0 {
+                state
+                    .broadcast
+                    .announce(moq_net::origin::Route::default())
+                    .map_err(map_err)
+            } else {
+                state.broadcast.unannounce();
+                Ok(())
+            }
         })
         .map(|_| MOQ_OK)
         .unwrap_or_else(|e| e)
@@ -200,7 +225,14 @@ pub unsafe extern "C" fn moq_broadcast_producer_set_catalog_section(
         Err(err) => return map_err(err),
     };
     producer
-        .with_state(|state| state.catalog.lock().set_section(name, value).map_err(map_err))
+        .with_state(|state| {
+            state
+                .catalog
+                .modify()
+                .map_err(map_err)?
+                .set_section(name, value)
+                .map_err(map_err)
+        })
         .map(|_| MOQ_OK)
         .unwrap_or_else(|e| e)
 }
@@ -222,7 +254,7 @@ pub unsafe extern "C" fn moq_broadcast_producer_remove_catalog_section(
     };
     producer
         .with_state(|state| {
-            state.catalog.lock().remove_section(name);
+            state.catalog.modify().map_err(map_err)?.remove_section(name);
             Ok(())
         })
         .map(|_| MOQ_OK)
@@ -284,40 +316,44 @@ pub unsafe extern "C" fn moq_broadcast_producer_publish_media(
         Err(e) => return e,
     };
     let format = match read_cstr(format) {
-        Ok(v) => v.to_string(),
+        Ok(v) => v,
         Err(e) => return e,
+    };
+    let parsed: moq_mux::import::Format = match format.parse() {
+        Ok(v) => v,
+        Err(err) => return map_err(err),
     };
     let data = if init_data.is_null() {
         Vec::new()
     } else {
         std::slice::from_raw_parts(init_data, init_len).to_vec()
     };
-    let init = moq_mux::import::Init::new(format.clone(), data);
 
-    match producer.with_state(|state| {
-        match moq_mux::import::Container::new(
-            state.broadcast.clone(),
-            state.catalog.reserve(),
-            &format,
-            &init.data,
-        ) {
-            Ok(container) => Ok(into_raw(MediaProducer {
-                decoder: Mutex::new(Some(MediaDecoder::Container(container))),
-                demand: None,
-            })),
-            Err(moq_mux::Error::UnknownFormat(_)) => {
-                let mut broadcast = state.broadcast.clone();
-                let name = broadcast.unique_name(&format!(".{format}"));
-                let request = broadcast.reserve_track(name).map_err(map_err)?;
-                let import = moq_mux::import::Track::new(request, state.catalog.reserve(), init).map_err(map_err)?;
-                let demand = import.demand();
-                Ok(into_raw(MediaProducer {
-                    decoder: Mutex::new(Some(MediaDecoder::Track(Box::new(import)))),
-                    demand: Some(demand),
-                }))
-            }
-            Err(err) => Err(map_err(err)),
+    match producer.with_state(|state| match parsed {
+        moq_mux::import::Format::Container(kind) => {
+            let init = moq_mux::import::ContainerInit::new(kind, data);
+            moq_mux::import::Container::new(state.broadcast.clone(), state.catalog.reserve(), &init)
+                .map_err(map_err)
+                .map(|container| {
+                    into_raw(MediaProducer {
+                        decoder: Mutex::new(Some(MediaDecoder::Container(container))),
+                        demand: None,
+                    })
+                })
         }
+        moq_mux::import::Format::Audio(kind) => {
+            let init = moq_mux::import::AudioInit::new(kind, data);
+            reserve_media_track(state, &parsed, |request, reserved| {
+                moq_mux::import::Track::audio(request, reserved, init)
+            })
+        }
+        moq_mux::import::Format::Video(kind) => {
+            let init = moq_mux::import::VideoInit::new(kind, data);
+            reserve_media_track(state, &parsed, |request, reserved| {
+                moq_mux::import::Track::video(request, reserved, init)
+            })
+        }
+        _ => Err(fail("unknown media format")),
     }) {
         Ok(ptr) => write_out(out_media, ptr),
         Err(e) => e,
@@ -337,27 +373,40 @@ pub unsafe extern "C" fn moq_broadcast_producer_publish_media_stream(
         Err(e) => return e,
     };
     let format = match read_cstr(format) {
-        Ok(v) => v.to_string(),
+        Ok(v) => v,
         Err(e) => return e,
     };
-    let init = moq_mux::import::Init::new(format.clone(), Vec::<u8>::new());
-    match producer.with_state(|state| {
-        match moq_mux::import::ContainerStream::new(state.broadcast.clone(), state.catalog.reserve(), &format) {
-            Ok(container) => Ok(into_raw(MediaStreamProducer {
+    let parsed: moq_mux::import::Format = match format.parse() {
+        Ok(v) => v,
+        Err(err) => return map_err(err),
+    };
+    match producer.with_state(|state| match parsed {
+        moq_mux::import::Format::Container(kind) => moq_mux::import::ContainerStream::new(
+            state.broadcast.clone(),
+            state.catalog.reserve(),
+            kind,
+        )
+        .map_err(map_err)
+        .map(|container| {
+            into_raw(MediaStreamProducer {
                 decoder: Mutex::new(Some(StreamDecoder::Container(container))),
-            })),
-            Err(moq_mux::Error::UnknownFormat(_)) => {
-                let mut broadcast = state.broadcast.clone();
-                let name = broadcast.unique_name(&format!(".{format}"));
-                let request = broadcast.reserve_track(name).map_err(map_err)?;
-                let import =
-                    moq_mux::import::TrackStream::new(request, state.catalog.reserve(), init).map_err(map_err)?;
-                Ok(into_raw(MediaStreamProducer {
-                    decoder: Mutex::new(Some(StreamDecoder::Track(Box::new(import)))),
-                }))
-            }
-            Err(err) => Err(map_err(err)),
+            })
+        }),
+        moq_mux::import::Format::Video(kind) => {
+            let init = moq_mux::import::VideoInit::new(kind, Vec::<u8>::new());
+            let mut broadcast = state.broadcast.clone();
+            let name = broadcast.unique_name(&format!(".{parsed}"));
+            let request = broadcast.reserve_track(name).map_err(map_err)?;
+            moq_mux::import::TrackStream::video(request, state.catalog.reserve(), init)
+                .map_err(map_err)
+                .map(|import| {
+                    into_raw(MediaStreamProducer {
+                        decoder: Mutex::new(Some(StreamDecoder::Track(Box::new(import)))),
+                    })
+                })
         }
+        moq_mux::import::Format::Audio(_) => Err(fail("audio stream import is not supported")),
+        _ => Err(fail("unknown media format")),
     }) {
         Ok(ptr) => write_out(out_media, ptr),
         Err(e) => e,
@@ -379,7 +428,7 @@ pub unsafe extern "C" fn moq_broadcast_producer_finish(handle: *mut c_void) -> i
     let Some(mut state) = guard.take() else {
         return closed();
     };
-    state.broadcast.finish();
+    state.broadcast.close();
     state.catalog.finish().map(|_| MOQ_OK).unwrap_or_else(map_err)
 }
 
@@ -691,7 +740,7 @@ pub unsafe extern "C" fn moq_track_producer_consume(
     let Some(inner) = guard.as_ref() else {
         return closed();
     };
-    write_out(out_consumer, into_raw(TrackConsumer::new(inner.subscribe(None))))
+    write_out(out_consumer, into_raw(TrackConsumer::new(inner.subscribe(None), false)))
 }
 
 #[no_mangle]
@@ -852,7 +901,7 @@ pub unsafe extern "C" fn moq_media_producer_write_frame(
     } else {
         std::slice::from_raw_parts(payload, payload_len).to_vec()
     };
-    let timestamp = match hang::container::Timestamp::from_micros(timestamp_us) {
+    let timestamp = match moq_net::Timestamp::from_micros(timestamp_us) {
         Ok(t) => t,
         Err(err) => return map_err(err),
     };

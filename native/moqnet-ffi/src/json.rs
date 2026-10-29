@@ -10,6 +10,14 @@ use crate::ffi::{as_ref, clear_error, drop_raw, fail, into_raw, read_cstr, to_cs
 use crate::producer::BroadcastProducer;
 use crate::runtime;
 
+fn json_compression(compression: u8) -> moq_json::Compression {
+    if compression != 0 {
+        moq_json::Compression::Deflate
+    } else {
+        moq_json::Compression::None
+    }
+}
+
 pub struct JsonSnapshotProducer {
     inner: Mutex<Option<moq_json::snapshot::Producer<Value>>>,
 }
@@ -46,9 +54,9 @@ pub unsafe extern "C" fn moq_broadcast_producer_publish_json_snapshot(
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    let mut config = moq_json::snapshot::ProducerConfig::default();
+    let mut config = moq_json::snapshot::Config::default();
     config.delta_ratio = delta_ratio;
-    config.compression = compression != 0;
+    config.compression = json_compression(compression);
     match producer.with_state(|state| {
         let mut broadcast = state.broadcast.clone();
         let track = broadcast.create_track(name, None).map_err(map_err)?;
@@ -78,7 +86,8 @@ pub unsafe extern "C" fn moq_broadcast_producer_publish_json_stream(
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    let config = moq_json::stream::ProducerConfig::default().with_compression(compression != 0);
+    let mut config = moq_json::stream::Config::default();
+    config.compression = json_compression(compression);
     match producer.with_state(|state| {
         let mut broadcast = state.broadcast.clone();
         let track = broadcast.create_track(name, None).map_err(map_err)?;
@@ -205,8 +214,8 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_json_snapshot(
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    let mut config = moq_json::snapshot::ConsumerConfig::default();
-    config.compression = compression != 0;
+    let mut config = moq_json::snapshot::consumer::Config::default();
+    config.compression = json_compression(compression);
     let inner = consumer.inner().clone();
     match runtime::block_on(async move { inner.track(&name)?.subscribe(None).await }) {
         Ok(track) => write_out(
@@ -236,7 +245,8 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_json_stream(
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    let config = moq_json::stream::ConsumerConfig::default().with_compression(compression != 0);
+    let mut config = moq_json::stream::Config::default();
+    config.compression = json_compression(compression);
     let inner = consumer.inner().clone();
     match runtime::block_on(async move { inner.track(&name)?.subscribe(None).await }) {
         Ok(track) => write_out(

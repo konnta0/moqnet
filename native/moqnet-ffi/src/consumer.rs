@@ -22,8 +22,19 @@ pub struct CatalogConsumer {
     cancelled: cancel::Flag,
 }
 
+enum TrackRead {
+    Arrival {
+        subscriber: moq_net::track::Subscriber,
+        group: Option<moq_net::group::Consumer>,
+    },
+    Ordered {
+        subscriber: moq_net::track::Ordered,
+        group: Option<moq_net::group::Consumer>,
+    },
+}
+
 pub struct TrackConsumer {
-    inner: Mutex<moq_net::track::Subscriber>,
+    inner: Mutex<TrackRead>,
     cancelled: cancel::Flag,
 }
 
@@ -56,10 +67,69 @@ impl BroadcastConsumer {
 }
 
 impl TrackConsumer {
-    pub(crate) fn new(track: moq_net::track::Subscriber) -> Self {
+    pub(crate) fn new(track: moq_net::track::Subscriber, ordered: bool) -> Self {
+        let inner = if ordered {
+            TrackRead::Ordered {
+                subscriber: track.ordered(),
+                group: None,
+            }
+        } else {
+            TrackRead::Arrival {
+                subscriber: track,
+                group: None,
+            }
+        };
         Self {
-            inner: Mutex::new(track),
+            inner: Mutex::new(inner),
             cancelled: cancel::new(),
+        }
+    }
+}
+
+impl TrackRead {
+    async fn next_group(&mut self) -> Result<Option<moq_net::group::Consumer>, moq_net::Error> {
+        match self {
+            TrackRead::Arrival { subscriber, group } => {
+                *group = None;
+                subscriber.recv_group().await
+            }
+            TrackRead::Ordered { subscriber, group } => {
+                *group = None;
+                subscriber.next_group().await
+            }
+        }
+    }
+
+    async fn read_frame(&mut self) -> Result<Option<moq_net::frame::Frame>, moq_net::Error> {
+        loop {
+            if let Some(group) = self.current_group() {
+                match group.read_frame().await? {
+                    Some(frame) => return Ok(Some(frame)),
+                    None => self.clear_group(),
+                }
+            }
+            match self.next_group().await? {
+                Some(group) => self.set_group(group),
+                None => return Ok(None),
+            }
+        }
+    }
+
+    fn current_group(&mut self) -> Option<&mut moq_net::group::Consumer> {
+        match self {
+            TrackRead::Arrival { group, .. } | TrackRead::Ordered { group, .. } => group.as_mut(),
+        }
+    }
+
+    fn set_group(&mut self, next: moq_net::group::Consumer) {
+        match self {
+            TrackRead::Arrival { group, .. } | TrackRead::Ordered { group, .. } => *group = Some(next),
+        }
+    }
+
+    fn clear_group(&mut self) {
+        match self {
+            TrackRead::Arrival { group, .. } | TrackRead::Ordered { group, .. } => *group = None,
         }
     }
 }
@@ -74,13 +144,19 @@ impl GroupConsumer {
     }
 }
 
-fn subscription(priority: u8, ordered: u8, latency_max_ms: u64, group_start: i64, group_end: i64) -> moq_net::track::Subscription {
-    moq_net::track::Subscription::default()
+fn subscription(priority: u8, latency_max_ms: u64, group_start: i64, group_end: i64) -> moq_net::track::Subscription {
+    let mut sub = moq_net::track::Subscription::default()
         .with_priority(priority)
-        .with_ordered(ordered != 0)
-        .with_latency_max(std::time::Duration::from_millis(latency_max_ms))
-        .with_group_start(if group_start >= 0 { Some(group_start as u64) } else { None })
-        .with_group_end(if group_end >= 0 { Some(group_end as u64) } else { None })
+        .with_max_age(std::time::Duration::from_millis(latency_max_ms));
+    if group_start >= 0 || group_end >= 0 {
+        sub = match (group_start >= 0, group_end >= 0) {
+            (true, true) => sub.with_groups(group_start as u64..=group_end as u64),
+            (true, false) => sub.with_groups(group_start as u64..),
+            (false, true) => sub.with_groups(..=group_end as u64),
+            (false, false) => sub,
+        };
+    }
+    sub
 }
 
 fn container_from_kind(kind: u8, init: &[u8]) -> Result<moq_mux::catalog::hang::Container, i32> {
@@ -90,8 +166,7 @@ fn container_from_kind(kind: u8, init: &[u8]) -> Result<moq_mux::catalog::hang::
         2 => hang::catalog::Container::Loc,
         _ => return Err(fail("unknown container")),
     };
-    (&hang_container)
-        .try_into()
+    moq_mux::catalog::hang::Container::new(&hang_container, moq_mux::container::Kind::Video)
         .map_err(|e| fail(format!("invalid container: {e}")))
 }
 
@@ -145,7 +220,8 @@ fn catalog_json(catalog: &moq_mux::catalog::hang::Catalog<moq_mux::catalog::hang
         })
         .collect();
     let sections: serde_json::Map<String, serde_json::Value> = catalog
-        .sections()
+        .ext
+        .iter()
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
     serde_json::json!({
@@ -170,11 +246,11 @@ pub unsafe extern "C" fn moq_broadcast_consumer_route_json(handle: *const c_void
         Ok(c) => c,
         Err(e) => return e,
     };
-    let route = consumer.inner.route();
     let json = serde_json::json!({
-        "hops": route.hops.iter().map(|o| o.id()).collect::<Vec<_>>(),
-        "cost": route.cost,
-        "announce": route.announce,
+        "hops": serde_json::Value::Array(Vec::new()),
+        "cost": 0,
+        "announce": true,
+        "path": consumer.inner.info().path.to_string(),
     });
     match to_cstring(json.to_string()) {
         Ok(ptr) => write_out(out_json, ptr),
@@ -247,10 +323,10 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_track(
         Ok(v) => v.to_string(),
         Err(e) => return e,
     };
-    let sub = subscription(priority, ordered, latency_max_ms, group_start, group_end);
+    let sub = subscription(priority, latency_max_ms, group_start, group_end);
     let inner = consumer.inner.clone();
     match runtime::block_on(async move { inner.track(&name)?.subscribe(Some(sub)).await }) {
-        Ok(track) => write_out(out_track, into_raw(TrackConsumer::new(track))),
+        Ok(track) => write_out(out_track, into_raw(TrackConsumer::new(track, ordered != 0))),
         Err(err) => map_err(err),
     }
 }
@@ -285,12 +361,12 @@ pub unsafe extern "C" fn moq_broadcast_consumer_subscribe_media(
         Ok(v) => v,
         Err(e) => return e,
     };
-    let sub = subscription(priority, ordered, latency_max_ms, -1, -1);
-    let latency = sub.latency_max;
+    let sub = subscription(priority, latency_max_ms, -1, -1);
+    let _ = ordered;
     let inner = consumer.inner.clone();
     match runtime::block_on(async move { inner.track(&name)?.subscribe(Some(sub)).await }) {
         Ok(track) => {
-            let consumer = moq_mux::container::Consumer::new(track, media).with_latency(latency);
+            let consumer = moq_mux::container::Consumer::new(track, media);
             write_out(
                 out_media,
                 into_raw(MediaConsumer {
@@ -363,23 +439,10 @@ pub unsafe extern "C" fn moq_route_watch_next(handle: *mut c_void, out_json: *mu
         Ok(g) => g,
         Err(_) => return fail("lock poisoned"),
     };
-    match runtime::block_on(cancel::or_set(&watch.cancelled, inner.route_changed())) {
-        None => return fail("cancelled"),
-        Some(result) => match result {
-        Ok(route) => {
-            let json = serde_json::json!({
-                "hops": route.hops.iter().map(|o| o.id()).collect::<Vec<_>>(),
-                "cost": route.cost,
-                "announce": route.announce,
-            });
-            match to_cstring(json.to_string()) {
-                Ok(ptr) => write_out(out_json, ptr),
-                Err(e) => e,
-            }
-        }
-        Err(moq_net::Error::Dropped) => MOQ_NONE,
-        Err(err) => map_err(err),
-        }
+    match runtime::block_on(cancel::or_set(&watch.cancelled, inner.closed())) {
+        None => fail("cancelled"),
+        Some(moq_net::Error::Dropped) => MOQ_NONE,
+        Some(err) => map_err(err),
     }
 }
 

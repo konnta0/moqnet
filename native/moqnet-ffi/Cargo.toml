@@ -1,10 +1,10 @@
 [package]
 name = "moqnet_ffi"
-version = "0.3.17"
+version = "0.4.19"
 edition = "2021"
 authors = ["konnta0"]
 license = "MIT"
-description = "C ABI for MoQ (moq-net / moq-native) used by MoqNet C# / Unity bindings"
+description = "C ABI for MoQ (moq-net / moq-tokio) used by MoqNet C# / Unity bindings"
 repository = "https://github.com/konnta0/moqnet"
 rust-version = "1.91"
 
@@ -28,13 +28,16 @@ tracing = "0.1"
 url = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
-moq-net = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
-moq-native = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
-hang = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
-moq-mux = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
-moq-json = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0" }
-moq-audio = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0", optional = true, features = ["aac"] }
-moq-video = { git = "https://github.com/moq-dev/moq", rev = "0f7cbd765f183dd13dd3b953a47f8c6b61811da0", optional = true }
+# Crate versions published with moq-relay 0.17.9 (git 30fd9d450bd380f8cac77d97d44b42976ba16878).
+# moq-native 0.20.0 is a compile-fail tombstone; native transport is moq-tokio.
+# crates.io pins avoid fetching moq-dev/moq's private `.claude/shared` git submodule.
+moq-net = "0.3.17"
+moq-tokio = "0.19.30"
+hang = "0.21.18"
+moq-mux = "0.10.18"
+moq-json = "0.5.15"
+moq-audio = { version = "0.1.17", optional = true, features = ["aac"] }
+moq-video = { version = "0.1.17", optional = true }
 pollster = { version = "0.4", optional = true }
 
 [build-dependencies]

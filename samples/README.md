@@ -31,12 +31,14 @@ dotnet run --project samples/Relay
 
 Optional bind argument: `dotnet run --project samples/Relay -- 127.0.0.1:4433`
 
+The in-process sample relay speaks the same MoQ protocol as **moq-relay 0.17**.
+
 ## Authenticated relay
 
 [`Auth/`](Auth/README.md) demonstrates the production-oriented split: an ASP.NET API
-issues short-lived room/role-scoped JWTs, and the upstream `moq-relay` enforces
-publish and subscribe paths. The sample identity header and committed key are for
-local development only.
+issues short-lived room/role-scoped JWTs, `moq auth serve` verifies them, and
+upstream **moq-relay 0.17** enforces publish and subscribe paths. The sample
+identity header and committed key are for local development only.
 
 ## Unity
 

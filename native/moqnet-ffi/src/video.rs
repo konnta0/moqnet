@@ -50,7 +50,11 @@ mod imp {
             Ok(p) => p,
             Err(e) => return e,
         };
-        let mut config = moq_video::encode::Config::new(width, height, framerate);
+        let fps = match moq_video::Rate::new(framerate, 1) {
+            Ok(v) => v,
+            Err(err) => return fail(format!("invalid framerate: {err}")),
+        };
+        let mut config = moq_video::encode::Config::new(width, height, fps);
         config.codec = match codec {
             0 => moq_video::encode::Codec::H264,
             1 => moq_video::encode::Codec::H265,
@@ -66,9 +70,13 @@ mod imp {
             },
             _ => return fail("unknown encoder kind"),
         };
-        config.bitrate = if bitrate >= 0 { Some(bitrate as u64) } else { None };
+        config.bitrate = if bitrate >= 0 {
+            Some(moq_net::bandwidth::Rate::from_bps(bitrate as u64))
+        } else {
+            None
+        };
         if gop >= 0 {
-            config.gop = gop as u32;
+            config.gop = moq_video::encode::Gop::Keyframe { interval: gop as u32 };
         }
 
         let rendition = match block_on(config.probe()) {
@@ -88,7 +96,7 @@ mod imp {
             Some(name) => {
                 let track = state
                     .broadcast
-                    .create_track(name, state.catalog.track_info())
+                    .create_track(name, state.catalog.track_info(hang::catalog::PRIORITY.video))
                     .map_err(map_err)?;
                 moq_video::encode::Producer::with_track(track, state.catalog.clone(), rendition.clone()).map_err(map_err)
             }
@@ -159,7 +167,7 @@ mod imp {
             return closed();
         };
         let surface = match inner.format {
-            0 => match moq_video::I420::new(inner.size.width, inner.size.height, bytes) {
+            0 => match moq_video::I420::new(inner.size, bytes) {
                 Ok(s) => moq_video::Surface::I420(s),
                 Err(err) => return map_err(err),
             },
@@ -194,8 +202,7 @@ mod imp {
         let Some(inner) = guard.as_mut() else {
             return closed();
         };
-        inner.encoder.keyframe();
-        MOQ_OK
+        block_on(inner.encoder.cut()).map(|_| MOQ_OK).unwrap_or_else(map_err)
     }
 
     pub unsafe fn producer_set_bitrate(handle: *mut c_void, bitrate: u64) -> i32 {
@@ -212,7 +219,7 @@ mod imp {
         let Some(inner) = guard.as_mut() else {
             return closed();
         };
-        block_on(inner.encoder.set_bitrate(bitrate))
+        block_on(inner.encoder.set_bitrate(moq_net::bandwidth::Rate::from_bps(bitrate)))
             .map(|_| MOQ_OK)
             .unwrap_or_else(map_err)
     }
